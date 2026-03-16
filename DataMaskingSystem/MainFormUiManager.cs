@@ -7,16 +7,13 @@ namespace DataMaskingSystem
 {
     public class MainFormUiComponents
     {
-        public Panel PnlLogin { get; set; }
         public Panel PnlCSKH { get; set; }
         public Panel PnlDEV { get; set; }
-        public TextBox TxtUser { get; set; }
-        public TextBox TxtPass { get; set; }
         public TextBox TxtSearchID { get; set; }
-        public Button BtnLogin { get; set; }
         public Button BtnSearch { get; set; }
         public Button BtnExport { get; set; }
-        public Label LblResultCSKH { get; set; }
+        public Button BtnLogout { get; set; }
+        public RichTextBox TxtResultCSKH { get; set; }
         public Label LblRole { get; set; }
         public RichTextBox TxtConsole { get; set; }
         public DataGridView DgvDev { get; set; }
@@ -24,7 +21,7 @@ namespace DataMaskingSystem
 
     public static class MainFormUiManager
     {
-        public static MainFormUiComponents Build(Form host, EventHandler onLoginClick, EventHandler onSearchClick, EventHandler onExportClick)
+        public static MainFormUiComponents Build(Form host, EventHandler onSearchClick, EventHandler onExportClick, EventHandler onLogoutClick)
         {
             host.Text = "HỆ THỐNG QUẢN LÝ DỮ LIỆU BẢO MẬT X";
             host.Size = new Size(1100, 760);
@@ -33,8 +30,9 @@ namespace DataMaskingSystem
             host.BackColor = Color.FromArgb(12, 17, 28);
             host.ForeColor = Color.White;
 
-            Panel pnlLogin = new Panel { Dock = DockStyle.Top, Height = 118 };
-            pnlLogin.Paint += DrawLoginGradient;
+            // ================= HEADER =================
+            Panel pnlHeader = new Panel { Dock = DockStyle.Top, Height = 118 };
+            pnlHeader.Paint += DrawLoginGradient;
 
             Label lblTitle = new Label
             {
@@ -45,7 +43,7 @@ namespace DataMaskingSystem
                 AutoSize = true,
                 BackColor = Color.Transparent
             };
-            pnlLogin.Controls.Add(lblTitle);
+            pnlHeader.Controls.Add(lblTitle);
 
             Label lblSubTitle = new Label
             {
@@ -56,7 +54,7 @@ namespace DataMaskingSystem
                 AutoSize = true,
                 BackColor = Color.Transparent
             };
-            pnlLogin.Controls.Add(lblSubTitle);
+            pnlHeader.Controls.Add(lblSubTitle);
 
             Label lblRole = new Label
             {
@@ -67,72 +65,33 @@ namespace DataMaskingSystem
                 AutoSize = true,
                 BackColor = Color.Transparent
             };
-            pnlLogin.Controls.Add(lblRole);
+            pnlHeader.Controls.Add(lblRole);
 
-            pnlLogin.Controls.Add(new Label
+            Button btnLogout = new Button
             {
-                Text = "User",
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Location = new Point(660, 20),
-                Width = 45
-            });
-
-            TextBox txtUser = new TextBox
-            {
-                Location = new Point(710, 18),
+                Text = "Đăng xuất",
+                Location = new Point(910, 28),
                 Width = 130,
-                Font = new Font("Segoe UI", 10),
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.FromArgb(238, 247, 250)
-            };
-            pnlLogin.Controls.Add(txtUser);
-
-            pnlLogin.Controls.Add(new Label
-            {
-                Text = "Pass",
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                Height = 46,
+                BackColor = Color.FromArgb(204, 60, 60),
                 ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Location = new Point(660, 56),
-                Width = 45
-            });
-
-            TextBox txtPass = new TextBox
-            {
-                Location = new Point(710, 54),
-                Width = 130,
-                PasswordChar = '*',
-                Font = new Font("Segoe UI", 10),
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.FromArgb(238, 247, 250)
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold)
             };
-            pnlLogin.Controls.Add(txtPass);
+            btnLogout.FlatAppearance.BorderSize = 0;
+            btnLogout.Click += onLogoutClick;
+            pnlHeader.Controls.Add(btnLogout);
 
-            Button btnLogin = new Button
-            {
-                Text = "Đăng Nhập",
-                Location = new Point(855, 24),
-                Width = 210,
-                Height = 58,
-                BackColor = Color.FromArgb(255, 132, 66),
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat
-            };
-            btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.Click += onLoginClick;
-            pnlLogin.Controls.Add(btnLogin);
-
+            // ================= PHÂN HỆ A (CSKH) =================
             Panel pnlCSKH = new Panel
             {
                 Location = new Point(24, 142),
-                Size = new Size(516, 264),
+                Size = new Size(1036, 420),
                 BackColor = Color.FromArgb(21, 36, 51),
                 Visible = false
             };
             pnlCSKH.Paint += DrawCardBorder;
+
             pnlCSKH.Controls.Add(new Label
             {
                 Text = "PHÂN HỆ A | TRA CỨU CSKH",
@@ -183,26 +142,30 @@ namespace DataMaskingSystem
             btnSearch.Click += onSearchClick;
             pnlCSKH.Controls.Add(btnSearch);
 
-            Label lblResultCSKH = new Label
+            RichTextBox txtResultCSKH = new RichTextBox
             {
                 Location = new Point(18, 130),
-                Size = new Size(480, 116),
+                Size = new Size(1000, 270),
                 Font = new Font("Consolas", 11),
                 ForeColor = Color.FromArgb(179, 255, 211),
                 BackColor = Color.FromArgb(11, 23, 33),
                 BorderStyle = BorderStyle.FixedSingle,
-                Text = "Kết quả sau khi tra cứu sẽ hiển thị tại đây"
+                Text = "Kết quả sau khi tra cứu sẽ hiển thị tại đây",
+                ReadOnly = true,
+                ScrollBars = RichTextBoxScrollBars.Vertical
             };
-            pnlCSKH.Controls.Add(lblResultCSKH);
+            pnlCSKH.Controls.Add(txtResultCSKH);
 
+            // ================= PHÂN HỆ B (DEV) =================
             Panel pnlDEV = new Panel
             {
-                Location = new Point(556, 142),
-                Size = new Size(516, 264),
+                Location = new Point(24, 142),
+                Size = new Size(1036, 420),
                 BackColor = Color.FromArgb(31, 31, 45),
                 Visible = false
             };
             pnlDEV.Paint += DrawCardBorder;
+
             pnlDEV.Controls.Add(new Label
             {
                 Text = "PHÂN HỆ B | DEV / TESTER",
@@ -224,7 +187,7 @@ namespace DataMaskingSystem
             {
                 Text = "Trích Xuất CSDL An Toàn (RSA + AES + Mask)",
                 Location = new Point(18, 78),
-                Width = 480,
+                Width = 1000,
                 Height = 36,
                 BackColor = Color.FromArgb(255, 132, 66),
                 ForeColor = Color.White,
@@ -238,7 +201,7 @@ namespace DataMaskingSystem
             DataGridView dgvDev = new DataGridView
             {
                 Location = new Point(18, 126),
-                Size = new Size(480, 120),
+                Size = new Size(1000, 274),
                 BackgroundColor = Color.FromArgb(247, 247, 252),
                 BorderStyle = BorderStyle.None,
                 ForeColor = Color.Black,
@@ -255,20 +218,21 @@ namespace DataMaskingSystem
             };
             pnlDEV.Controls.Add(dgvDev);
 
+            // ================= BẢNG GIÁM SÁT CONSOLE =================
             Label lblLogTitle = new Label
             {
                 Text = "BẢNG GIÁM SÁT ĐƯỜNG TRUYỀN CÔNG KHAI",
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 ForeColor = Color.FromArgb(141, 174, 201),
-                Location = new Point(24, 420),
+                Location = new Point(24, 575),
                 AutoSize = true
             };
             host.Controls.Add(lblLogTitle);
 
             RichTextBox txtConsole = new RichTextBox
             {
-                Location = new Point(24, 448),
-                Size = new Size(1048, 252),
+                Location = new Point(24, 600),
+                Size = new Size(1036, 100),
                 BorderStyle = BorderStyle.FixedSingle,
                 Font = new Font("Consolas", 10),
                 BackColor = Color.FromArgb(5, 10, 16),
@@ -277,23 +241,20 @@ namespace DataMaskingSystem
                 ScrollBars = RichTextBoxScrollBars.Vertical
             };
 
-            host.Controls.Add(pnlLogin);
+            host.Controls.Add(pnlHeader);
             host.Controls.Add(pnlCSKH);
             host.Controls.Add(pnlDEV);
             host.Controls.Add(txtConsole);
 
             return new MainFormUiComponents
             {
-                PnlLogin = pnlLogin,
                 PnlCSKH = pnlCSKH,
                 PnlDEV = pnlDEV,
-                TxtUser = txtUser,
-                TxtPass = txtPass,
                 TxtSearchID = txtSearchID,
-                BtnLogin = btnLogin,
                 BtnSearch = btnSearch,
                 BtnExport = btnExport,
-                LblResultCSKH = lblResultCSKH,
+                BtnLogout = btnLogout,
+                TxtResultCSKH = txtResultCSKH,
                 LblRole = lblRole,
                 TxtConsole = txtConsole,
                 DgvDev = dgvDev
