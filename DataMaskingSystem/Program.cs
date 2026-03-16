@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data;
 using System.Drawing;
+using System.Text;
 using System.Windows.Forms;
 using MySql.Data.MySqlClient;
 
@@ -17,8 +18,27 @@ namespace DataMaskingSystem
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            // Khởi chạy Form giao diện chính
-            Application.Run(new MainForm());
+
+            while (true)
+            {
+                using (LoginForm loginForm = new LoginForm())
+                {
+                    if (loginForm.ShowDialog() != DialogResult.OK)
+                    {
+                        return;
+                    }
+
+                    using (MainForm mainForm = new MainForm(loginForm.SelectedRole))
+                    {
+                        Application.Run(mainForm);
+
+                        if (!mainForm.ShouldLogout)
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -28,16 +48,22 @@ namespace DataMaskingSystem
         string connectionString = "Server=127.0.0.1;Port=3306;Database=BankSystemMasking;Uid=root;Pwd=123456;";
 
         // Các thành phần giao diện
-        Panel pnlLogin, pnlCSKH, pnlDEV;
-        TextBox txtUser, txtPass, txtSearchID;
-        Button btnLogin, btnSearch, btnExport;
-        Label lblResultCSKH, lblRole;
+        Panel pnlCSKH, pnlDEV;
+        TextBox txtSearchID;
+        Button btnSearch, btnExport, btnLogout;
+        RichTextBox txtResultCSKH;
+        Label lblRole;
         RichTextBox txtConsole;
         DataGridView dgvDev;
+        readonly string selectedRole;
 
-        public MainForm()
+        public bool ShouldLogout { get; private set; }
+
+        public MainForm(string selectedRole)
         {
+            this.selectedRole = selectedRole;
             SetupUI();
+            ApplyRolePermissions();
         }
 
         // ==========================================
@@ -45,22 +71,41 @@ namespace DataMaskingSystem
         // ==========================================
         private void SetupUI()
         {
-            MainFormUiComponents ui = MainFormUiManager.Build(this, BtnLogin_Click, BtnSearch_Click, BtnExport_Click);
-            pnlLogin = ui.PnlLogin;
+            MainFormUiComponents ui = MainFormUiManager.Build(this, BtnSearch_Click, BtnExport_Click, BtnLogout_Click);
             pnlCSKH = ui.PnlCSKH;
             pnlDEV = ui.PnlDEV;
-            txtUser = ui.TxtUser;
-            txtPass = ui.TxtPass;
             txtSearchID = ui.TxtSearchID;
-            btnLogin = ui.BtnLogin;
             btnSearch = ui.BtnSearch;
             btnExport = ui.BtnExport;
-            lblResultCSKH = ui.LblResultCSKH;
+            btnLogout = ui.BtnLogout;
+            txtResultCSKH = ui.TxtResultCSKH;
             lblRole = ui.LblRole;
             txtConsole = ui.TxtConsole;
             dgvDev = ui.DgvDev;
 
-            LogToConsole("Hệ thống UI mới đã sẵn sàng. Đăng nhập với user cskh hoặc dev | Pass: 123.");
+            LogToConsole("Hệ thống UI mới đã sẵn sàng.");
+        }
+
+        private void ApplyRolePermissions()
+        {
+            pnlCSKH.Visible = (selectedRole == "cskh");
+            pnlDEV.Visible = (selectedRole == "dev");
+
+            if (selectedRole == "cskh")
+            {
+                lblRole.Text = "Vai trò hiện tại: CSKH | Dynamic Data Masking";
+                LogToConsole("Đăng nhập thành công. Quyền CSKH đã được cấp.");
+            }
+            else if (selectedRole == "dev")
+            {
+                lblRole.Text = "Vai trò hiện tại: DEV/TESTER | Static Data Masking";
+                LogToConsole("Đăng nhập thành công. Quyền DEV/TESTER đã được cấp.");
+            }
+            else
+            {
+                lblRole.Text = "Vai trò hiện tại: Không hợp lệ";
+                LogToConsole("Cảnh báo: vai trò không hợp lệ.");
+            }
         }
 
         private void LogToConsole(string message)
@@ -72,30 +117,6 @@ namespace DataMaskingSystem
         // ==========================================
         // 2. LUỒNG NGHIỆP VỤ & SỰ KIỆN NÚT BẤM
         // ==========================================
-        private void BtnLogin_Click(object sender, EventArgs e)
-        {
-            string user = txtUser.Text;
-            char[] passChars = CustomStringHelper.ToCharArray(txtPass.Text);
-
-            // Hàm băm mật khẩu tự chế (Hashing 1 chiều)
-            string hashedInput = new string(CustomHash.ComputeHash(passChars));
-            string expectedHash = new string(CustomHash.ComputeHash(CustomStringHelper.ToCharArray("123")));
-
-            if (hashedInput == expectedHash)
-            {
-                LogToConsole($"Đăng nhập thành công! Cấp quyền: {user.ToUpper()}");
-                pnlCSKH.Visible = (user == "cskh");
-                pnlDEV.Visible = (user == "dev");
-                if (user == "cskh") lblRole.Text = "Vai trò hiện tại: CSKH | Dynamic Data Masking";
-                else if (user == "dev") lblRole.Text = "Vai trò hiện tại: DEV/TESTER | Static Data Masking";
-                else lblRole.Text = "Vai trò hiện tại: Không hợp lệ";
-            }
-            else
-            {
-                MessageBox.Show("Sai mật khẩu!", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
         private void BtnSearch_Click(object sender, EventArgs e)
         {
             using (MySqlConnection conn = new MySqlConnection(connectionString))
@@ -103,20 +124,39 @@ namespace DataMaskingSystem
                 try
                 {
                     conn.Open();
-                    string query = $"SELECT HoTen, SoDienThoai, SoTaiKhoan FROM Customers WHERE CustomerID = '{txtSearchID.Text}'";
+                    string query = @"SELECT HoTen, HoTen_EN, NgaySinh, GioiTinh, SoCCCD, MaKhachHang,
+                                            SoDienThoai, SoDienThoai2, Email, DiaChiNha, Tinh_ThanhPho,
+                                            SoTaiKhoan, SoTaiKhoan_Phu, SoDu, HanMucTinDung, LoaiTaiKhoan,
+                                            TrangThaiKYC, TenCongTy, MaGiaoDich, NgayGioGD
+                                     FROM Customers
+                                     WHERE CustomerID = @customerId
+                                     LIMIT 1";
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@customerId", txtSearchID.Text.Trim());
+
                     using (MySqlDataReader reader = cmd.ExecuteReader())
                     {
                         if (reader.Read())
                         {
-                            char[] name = CustomStringHelper.ToCharArray(reader["HoTen"].ToString());
-                            char[] phone = CustomStringHelper.ToCharArray(reader["SoDienThoai"].ToString());
-                            char[] acc = CustomStringHelper.ToCharArray(reader["SoTaiKhoan"].ToString());
+                            string hoTenRaw = reader["HoTen"]?.ToString() ?? string.Empty;
+                            string soDienThoaiRaw = reader["SoDienThoai"]?.ToString() ?? string.Empty;
+                            string soTaiKhoanRaw = reader["SoTaiKhoan"]?.ToString() ?? string.Empty;
+                            string soCccdRaw = reader["SoCCCD"]?.ToString() ?? string.Empty;
+                            string emailRaw = reader["Email"]?.ToString() ?? string.Empty;
+
+                            char[] name = CustomStringHelper.ToCharArray(hoTenRaw);
+                            char[] phone = CustomStringHelper.ToCharArray(soDienThoaiRaw);
+                            char[] acc = CustomStringHelper.ToCharArray(soTaiKhoanRaw);
+                            char[] cccd = CustomStringHelper.ToCharArray(soCccdRaw);
+                            char[] email = CustomStringHelper.ToCharArray(emailRaw);
 
                             // 1. Dynamic Data Masking
                             char[] maskedName = CustomDataMasker.MaskFullName(name);
                             char[] maskedPhone = CustomDataMasker.MaskPhoneNumber(phone);
                             char[] maskedAcc = CustomDataMasker.MaskBankAccount(acc);
+                            char[] maskedCccd = CustomDataMasker.MaskBankAccount(cccd);
+                            char[] maskedEmail = CustomDataMasker.MaskEmail(email);
 
                             // 2. Mã hóa đường truyền XOR
                             char[] key = CustomStringHelper.ToCharArray("KEY123");
@@ -129,15 +169,60 @@ namespace DataMaskingSystem
                             char[] decPhone = CustomCryptography.XorEncryptDecrypt(encPhone, key);
                             char[] decAcc = CustomCryptography.XorEncryptDecrypt(encAcc, key);
 
-                            lblResultCSKH.Text = $"KẾT QUẢ TRA CỨU:\n\n" +
-                                                 $"Họ Tên: {new string(maskedName)}\n" +
-                                                 $"SĐT   : {new string(decPhone)}\n" +
-                                                 $"Số TK : {new string(decAcc)}";
+                            string gioiTinh = (reader["GioiTinh"]?.ToString() ?? string.Empty) switch
+                            {
+                                "0" => "Nam",
+                                "1" => "Nữ",
+                                _ => "Không rõ"
+                            };
+
+                            string loaiTaiKhoan = (reader["LoaiTaiKhoan"]?.ToString() ?? string.Empty) switch
+                            {
+                                "1" => "Thường",
+                                "2" => "VIP",
+                                "3" => "Premium",
+                                _ => "Không rõ"
+                            };
+
+                            string trangThaiKyc = (reader["TrangThaiKYC"]?.ToString() ?? string.Empty) switch
+                            {
+                                "0" => "Chưa KYC",
+                                "1" => "Đang xét duyệt",
+                                "2" => "Đạt",
+                                _ => "Không rõ"
+                            };
+
+                            StringBuilder resultBuilder = new StringBuilder();
+                            resultBuilder.AppendLine("KẾT QUẢ TRA CỨU CHI TIẾT (CSKH)");
+                            resultBuilder.AppendLine();
+                            resultBuilder.AppendLine($"Mã KH         : {reader["MaKhachHang"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Họ tên (Mask) : {new string(maskedName)}");
+                            resultBuilder.AppendLine($"Họ tên EN     : {reader["HoTen_EN"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Ngày sinh     : {reader["NgaySinh"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Giới tính     : {gioiTinh}");
+                            resultBuilder.AppendLine($"CCCD (Mask)   : {new string(maskedCccd)}");
+                            resultBuilder.AppendLine($"SĐT chính     : {new string(decPhone)}");
+                            resultBuilder.AppendLine($"SĐT phụ       : {reader["SoDienThoai2"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Email (Mask)  : {new string(maskedEmail)}");
+                            resultBuilder.AppendLine($"Địa chỉ       : {reader["DiaChiNha"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Tỉnh/TP       : {reader["Tinh_ThanhPho"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"TK chính      : {new string(decAcc)}");
+                            resultBuilder.AppendLine($"TK phụ        : {reader["SoTaiKhoan_Phu"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Số dư         : {reader["SoDu"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Hạn mức TD    : {reader["HanMucTinDung"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Loại TK       : {loaiTaiKhoan}");
+                            resultBuilder.AppendLine($"Trạng thái KYC: {trangThaiKyc}");
+                            resultBuilder.AppendLine($"Công ty       : {reader["TenCongTy"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Mã giao dịch  : {reader["MaGiaoDich"]?.ToString() ?? string.Empty}");
+                            resultBuilder.AppendLine($"Lần GD gần nhất: {reader["NgayGioGD"]?.ToString() ?? string.Empty}");
+
+                            txtResultCSKH.Text = resultBuilder.ToString();
                         }
                         else
                         {
-                            lblResultCSKH.Text = "Không tìm thấy khách hàng!";
+                            txtResultCSKH.Text = "Không tìm thấy khách hàng!";
                         }
+                    }
                     }
                 }
                 catch (Exception ex) { MessageBox.Show("Lỗi CSDL: " + ex.Message); }
@@ -182,6 +267,23 @@ namespace DataMaskingSystem
                 }
                 catch (Exception ex) { MessageBox.Show("Lỗi CSDL: " + ex.Message); }
             }
+        }
+
+        private void BtnLogout_Click(object sender, EventArgs e)
+        {
+            DialogResult confirm = MessageBox.Show(
+                "Bạn có chắc muốn đăng xuất không?",
+                "Xác nhận đăng xuất",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (confirm != DialogResult.Yes)
+            {
+                return;
+            }
+
+            ShouldLogout = true;
+            Close();
         }
     }
 
