@@ -31,7 +31,8 @@ namespace DataMaskingSystem
         Panel pnlLogin, pnlCSKH, pnlDEV;
         TextBox txtUser, txtPass, txtSearchID;
         Button btnLogin, btnSearch, btnExport;
-        Label lblResultCSKH, lblConsole;
+        Label lblResultCSKH, lblRole;
+        RichTextBox txtConsole;
         DataGridView dgvDev;
 
         public MainForm()
@@ -44,75 +45,28 @@ namespace DataMaskingSystem
         // ==========================================
         private void SetupUI()
         {
-            // --- CẤU HÌNH FORM CHÍNH ---
-            this.Text = "HỆ THỐNG QUẢN LÝ DỮ LIỆU BẢO MẬT X";
-            this.Size = new Size(820, 620);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Color.FromArgb(24, 30, 54); // Nền xanh đen Dark Mode
-            this.ForeColor = Color.White; // Chữ trắng toàn cục
+            MainFormUiComponents ui = MainFormUiManager.Build(this, BtnLogin_Click, BtnSearch_Click, BtnExport_Click);
+            pnlLogin = ui.PnlLogin;
+            pnlCSKH = ui.PnlCSKH;
+            pnlDEV = ui.PnlDEV;
+            txtUser = ui.TxtUser;
+            txtPass = ui.TxtPass;
+            txtSearchID = ui.TxtSearchID;
+            btnLogin = ui.BtnLogin;
+            btnSearch = ui.BtnSearch;
+            btnExport = ui.BtnExport;
+            lblResultCSKH = ui.LblResultCSKH;
+            lblRole = ui.LblRole;
+            txtConsole = ui.TxtConsole;
+            dgvDev = ui.DgvDev;
 
-            // --- PANEL ĐĂNG NHẬP ---
-            pnlLogin = new Panel { Dock = DockStyle.Top, Height = 80, BackColor = Color.FromArgb(46, 51, 73) };
-
-            Label lblTitle = new Label { Text = "🔒 BẢO MẬT NGÂN HÀNG", Font = new Font("Segoe UI", 16, FontStyle.Bold), ForeColor = Color.FromArgb(0, 126, 249), Location = new Point(20, 25), AutoSize = true };
-            pnlLogin.Controls.Add(lblTitle);
-
-            pnlLogin.Controls.Add(new Label { Text = "User:", Font = new Font("Segoe UI", 10), Location = new Point(320, 32), Width = 40 });
-            txtUser = new TextBox { Location = new Point(365, 30), Width = 120, Font = new Font("Segoe UI", 10) };
-            pnlLogin.Controls.Add(txtUser);
-
-            pnlLogin.Controls.Add(new Label { Text = "Pass:", Font = new Font("Segoe UI", 10), Location = new Point(500, 32), Width = 40 });
-            txtPass = new TextBox { Location = new Point(545, 30), Width = 120, PasswordChar = '●', Font = new Font("Segoe UI", 10) };
-            pnlLogin.Controls.Add(txtPass);
-
-            btnLogin = new Button { Text = "Đăng Nhập", Location = new Point(680, 28), Width = 100, Height = 30, BackColor = Color.FromArgb(0, 126, 249), ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold), FlatStyle = FlatStyle.Flat };
-            btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.Click += BtnLogin_Click;
-            pnlLogin.Controls.Add(btnLogin);
-
-            // --- PANEL CSKH (Phân hệ A) ---
-            pnlCSKH = new Panel { Location = new Point(20, 100), Size = new Size(360, 250), BackColor = Color.FromArgb(37, 42, 64), Visible = false };
-            pnlCSKH.Controls.Add(new Label { Text = "PHÂN HỆ A: CSKH", Font = new Font("Segoe UI", 12, FontStyle.Bold), ForeColor = Color.FromArgb(0, 126, 249), Location = new Point(15, 15), AutoSize = true });
-
-            pnlCSKH.Controls.Add(new Label { Text = "Nhập mã KH:", Location = new Point(15, 55), Width = 90, Font = new Font("Segoe UI", 10) });
-            txtSearchID = new TextBox { Location = new Point(105, 52), Width = 130, Font = new Font("Segoe UI", 10) };
-            pnlCSKH.Controls.Add(txtSearchID);
-
-            btnSearch = new Button { Text = "Tra cứu", Location = new Point(245, 51), Width = 90, Height = 28, BackColor = Color.FromArgb(24, 30, 54), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnSearch.Click += BtnSearch_Click;
-            pnlCSKH.Controls.Add(btnSearch);
-
-            lblResultCSKH = new Label { Location = new Point(15, 95), Size = new Size(330, 140), Font = new Font("Consolas", 11), ForeColor = Color.LightGreen };
-            pnlCSKH.Controls.Add(lblResultCSKH);
-
-            // --- PANEL DEV (Phân hệ B) ---
-            pnlDEV = new Panel { Location = new Point(410, 100), Size = new Size(370, 250), BackColor = Color.FromArgb(37, 42, 64), Visible = false };
-            pnlDEV.Controls.Add(new Label { Text = "PHÂN HỆ B: DEV / TESTER", Font = new Font("Segoe UI", 12, FontStyle.Bold), ForeColor = Color.FromArgb(0, 126, 249), Location = new Point(15, 15), AutoSize = true });
-
-            btnExport = new Button { Text = "Trích xuất CSDL (AES + Masking)", Location = new Point(15, 50), Width = 340, Height = 30, BackColor = Color.FromArgb(24, 30, 54), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnExport.Click += BtnExport_Click;
-            pnlDEV.Controls.Add(btnExport);
-
-            dgvDev = new DataGridView { Location = new Point(15, 95), Size = new Size(340, 140), BackColor = Color.White, ForeColor = Color.Black, AllowUserToAddRows = false, ReadOnly = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
-            pnlDEV.Controls.Add(dgvDev);
-
-            // --- MÀN HÌNH CONSOLE (Log) ---
-            Label lblLogTitle = new Label { Text = "MÔ PHỎNG ĐƯỜNG TRUYỀN (NETWORK TRAFFIC):", Font = new Font("Segoe UI", 9, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(20, 365), AutoSize = true };
-            this.Controls.Add(lblLogTitle);
-
-            lblConsole = new Label { Location = new Point(20, 390), Size = new Size(760, 170), BorderStyle = BorderStyle.FixedSingle, Font = new Font("Consolas", 10), BackColor = Color.Black, ForeColor = Color.Lime };
-
-            // --- THÊM VÀO FORM ---
-            this.Controls.Add(pnlLogin);
-            this.Controls.Add(pnlCSKH);
-            this.Controls.Add(pnlDEV);
-            this.Controls.Add(lblConsole);
-            LogToConsole("Hệ thống UI đã sẵn sàng. Đăng nhập để tiếp tục (cskh / dev | Pass: 123).");
+            LogToConsole("Hệ thống UI mới đã sẵn sàng. Đăng nhập với user cskh hoặc dev | Pass: 123.");
         }
 
         private void LogToConsole(string message)
         {
-            lblConsole.Text = "> " + message + "\n" + lblConsole.Text;
+            txtConsole.SelectionStart = 0;
+            txtConsole.SelectedText = "> " + message + "\n";
         }
 
         // ==========================================
@@ -132,6 +86,9 @@ namespace DataMaskingSystem
                 LogToConsole($"Đăng nhập thành công! Cấp quyền: {user.ToUpper()}");
                 pnlCSKH.Visible = (user == "cskh");
                 pnlDEV.Visible = (user == "dev");
+                if (user == "cskh") lblRole.Text = "Vai trò hiện tại: CSKH | Dynamic Data Masking";
+                else if (user == "dev") lblRole.Text = "Vai trò hiện tại: DEV/TESTER | Static Data Masking";
+                else lblRole.Text = "Vai trò hiện tại: Không hợp lệ";
             }
             else
             {
@@ -233,11 +190,25 @@ namespace DataMaskingSystem
     // =================================================================================
     public static class CustomStringHelper
     {
+        public static int GetLength(string input)
+        {
+            if (input == null) return 0;
+            int len = 0;
+            foreach (char c in input) len++;
+            return len;
+        }
+
         public static char[] ToCharArray(string input)
         {
             if (input == null) return new char[0];
-            char[] result = new char[input.Length];
-            for (int i = 0; i < input.Length; i++) result[i] = input[i];
+            int len = GetLength(input);
+            char[] result = new char[len];
+            int i = 0;
+            foreach (char c in input)
+            {
+                result[i] = c;
+                i++;
+            }
             return result;
         }
     }
@@ -246,9 +217,13 @@ namespace DataMaskingSystem
     {
         public static char[] ComputeHash(char[] input)
         {
+            if (input == null) return new char[0];
+            int len = 0;
+            foreach (char c in input) len++;
+            
             char[] hash = new char[16];
             for (int i = 0; i < 16; i++) hash[i] = '0';
-            for (int i = 0; i < input.Length; i++)
+            for (int i = 0; i < len; i++)
             {
                 int val = input[i];
                 val = ((val << 3) | (val >> 5)) ^ (i * 17);
@@ -263,8 +238,13 @@ namespace DataMaskingSystem
     {
         public static char[] XorEncryptDecrypt(char[] input, char[] key)
         {
-            char[] result = new char[input.Length];
-            for (int i = 0; i < input.Length; i++) result[i] = (char)(input[i] ^ key[i % key.Length]);
+            if (input == null || key == null) return new char[0];
+            int lenInput = 0; foreach (char c in input) lenInput++;
+            int lenKey = 0; foreach (char c in key) lenKey++;
+            if (lenKey == 0) return input;
+            
+            char[] result = new char[lenInput];
+            for (int i = 0; i < lenInput; i++) result[i] = (char)(input[i] ^ key[i % lenKey]);
             return result;
         }
     }
@@ -277,8 +257,11 @@ namespace DataMaskingSystem
 
         public static int[] EncryptAESKey(char[] aesKey)
         {
-            int[] encryptedKey = new int[aesKey.Length];
-            for (int i = 0; i < aesKey.Length; i++)
+            if (aesKey == null) return new int[0];
+            int len = 0; foreach (char c in aesKey) len++;
+            
+            int[] encryptedKey = new int[len];
+            for (int i = 0; i < len; i++)
             {
                 int m = aesKey[i] % n;
                 int c = 1;
@@ -290,8 +273,11 @@ namespace DataMaskingSystem
 
         public static char[] DecryptAESKey(int[] encryptedKey)
         {
-            char[] decryptedKey = new char[encryptedKey.Length];
-            for (int i = 0; i < encryptedKey.Length; i++)
+            if (encryptedKey == null) return new char[0];
+            int len = 0; foreach (int k in encryptedKey) len++;
+            
+            char[] decryptedKey = new char[len];
+            for (int i = 0; i < len; i++)
             {
                 int c = encryptedKey[i];
                 int m = 1;
@@ -306,15 +292,25 @@ namespace DataMaskingSystem
     {
         public static char[] EncryptData(char[] input, char[] key)
         {
-            char[] result = new char[input.Length];
-            for (int i = 0; i < input.Length; i++) result[i] = (char)(input[i] + key[i % key.Length]);
+            if (input == null || key == null) return new char[0];
+            int lenInput = 0; foreach (char c in input) lenInput++;
+            int lenKey = 0; foreach (char c in key) lenKey++;
+            if (lenKey == 0) return input;
+            
+            char[] result = new char[lenInput];
+            for (int i = 0; i < lenInput; i++) result[i] = (char)(input[i] + key[i % lenKey]);
             return result;
         }
 
         public static char[] DecryptData(char[] input, char[] key)
         {
-            char[] result = new char[input.Length];
-            for (int i = 0; i < input.Length; i++) result[i] = (char)(input[i] - key[i % key.Length]);
+            if (input == null || key == null) return new char[0];
+            int lenInput = 0; foreach (char c in input) lenInput++;
+            int lenKey = 0; foreach (char c in key) lenKey++;
+            if (lenKey == 0) return input;
+            
+            char[] result = new char[lenInput];
+            for (int i = 0; i < lenInput; i++) result[i] = (char)(input[i] - key[i % lenKey]);
             return result;
         }
     }
@@ -323,7 +319,10 @@ namespace DataMaskingSystem
     {
         public static char[] MaskPhoneNumber(char[] input)
         {
-            int len = input.Length;
+            if (input == null) return new char[0];
+            int len = 0;
+            foreach (char c in input) len++;
+            
             char[] result = new char[len];
             for (int i = 0; i < len; i++)
             {
@@ -335,24 +334,32 @@ namespace DataMaskingSystem
 
         public static char[] MaskFullName(char[] input)
         {
-            int len = input.Length;
+            if (input == null) return new char[0];
+            int len = 0;
+            foreach (char c in input) len++;
+            
             char[] result = new char[len];
             int firstSpace = 0;
             while (firstSpace < len && input[firstSpace] != ' ') firstSpace++;
             int lastSpace = len - 1;
             while (lastSpace >= 0 && input[lastSpace] != ' ') lastSpace--;
+            
             for (int i = 0; i < len; i++)
             {
-                if (input[i] == ' ') result[i] = ' ';
-                else if (i < firstSpace || i > lastSpace) result[i] = input[i];
-                else result[i] = '*';
+                if (i < firstSpace || i > lastSpace || input[i] == ' ') 
+                    result[i] = input[i];
+                else 
+                    result[i] = '*';
             }
             return result;
         }
 
         public static char[] MaskBankAccount(char[] input)
         {
-            int len = input.Length;
+            if (input == null) return new char[0];
+            int len = 0;
+            foreach (char c in input) len++;
+            
             char[] result = new char[len];
             for (int i = 0; i < len; i++)
             {
@@ -364,15 +371,68 @@ namespace DataMaskingSystem
 
         public static char[] ShiftMask(char[] input, int shiftVal)
         {
-            int len = input.Length;
+            if (input == null) return new char[0];
+            int len = 0;
+            foreach (char c in input) len++;
+            
             char[] result = new char[len];
             for (int i = 0; i < len; i++)
             {
-                int val = input[i] - '0';
-                val = (val + shiftVal) % 10;
-                result[i] = (char)(val + '0');
+                if (input[i] >= '0' && input[i] <= '9')
+                {
+                    int val = input[i] - '0';
+                    val = (val + shiftVal) % 10;
+                    result[i] = (char)(val + '0');
+                }
+                else
+                {
+                    result[i] = input[i];
+                }
             }
             return result;
+        }
+
+        public static char[] MaskEmail(char[] input)
+        {
+            if (input == null) return new char[0];
+            int len = 0; foreach (char c in input) len++;
+            
+            char[] result = new char[len];
+            int atIndex = -1;
+            for (int i = 0; i < len; i++)
+            {
+                if (input[i] == '@') { atIndex = i; break; }
+            }
+
+            if (atIndex == -1) // Không phải định dạng email
+            {
+                for (int i = 0; i < len; i++) result[i] = '*';
+                return result;
+            }
+
+            for (int i = 0; i < len; i++)
+            {
+                if (i == 0 || i >= atIndex - 1) 
+                    result[i] = input[i];
+                else 
+                    result[i] = '*';
+            }
+            return result;
+        }
+
+        public static void ShuffleBalances(decimal[] balances)
+        {
+            if (balances == null) return;
+            int len = 0; foreach (decimal d in balances) len++;
+            if (len <= 1) return;
+
+            // Thuật toán hoán vị chéo đơn giản
+            for (int i = 0; i < len - 1; i += 2)
+            {
+                decimal temp = balances[i];
+                balances[i] = balances[i + 1];
+                balances[i + 1] = temp;
+            }
         }
     }
 }
