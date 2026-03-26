@@ -209,16 +209,31 @@ namespace DataMaskingSystem
                     lblProfilePhone.Text = ExtractAndRemove(result.DbFields, "Sđt");
                     lblProfileEmail.Text = ExtractAndRemove(result.DbFields, "Email");
 
-                    var cardKey = result.DbFields.Keys.FirstOrDefault(k => k.Contains("Số thẻ"));
-                    lblMaskedCard.Text = cardKey != null ? result.DbFields[cardKey] : "**** **** **** ****";
+                    var cardKey = result.DbFields.Keys.FirstOrDefault(k => k.ToLower().Contains("số thẻ"));
+                    if (cardKey != null)
+                    {
+                        lblMaskedCard.Text = result.DbFields[cardKey] ?? "**** **** **** ****";
+                        result.DbFields.Remove(cardKey);
+                    }
+                    else
+                    {
+                        lblMaskedCard.Text = "**** **** **** ****";
+                    }
 
-                    // Tìm Số dư hiện tại
-                    var balanceKey = result.DbFields.Keys.FirstOrDefault(k => k.Contains("Số dư"));
-                    lblBalance.Text = balanceKey != null ? result.DbFields[balanceKey] : "0 VNĐ";
+                    var balanceKey = result.DbFields.Keys.FirstOrDefault(k => k.ToLower().Contains("số dư"));
+                    if (balanceKey != null)
+                    {
+                        lblBalance.Text = result.DbFields[balanceKey] ?? "0 VNĐ";
+                        result.DbFields.Remove(balanceKey);
+                    }
+                    else
+                    {
+                        lblBalance.Text = "0 VNĐ";
+                    }
+
+                    BindCustomerDetails(result.DbFields);
+                    UpdatePortraitImage(result.PortraitImage);
                 }
-
-                BindCustomerDetails(result.DbFields);
-                UpdatePortraitImage(result.PortraitImage);
             }
             catch (Exception ex)
             {
@@ -417,13 +432,15 @@ namespace DataMaskingSystem
                 }
 
                 DataTable dt = new DataTable();
-                dt.Columns.Add("ID");
-                dt.Columns.Add("CCCD (Masked)");
-                dt.Columns.Add("CipherText (AES)");
+                dt.Columns.Add("ID Hệ thống");
+                dt.Columns.Add("Mã KH");
+                dt.Columns.Add("Họ tên (Masked)");
+                dt.Columns.Add("Email (Masked)");
+                dt.Columns.Add("CCCD (Mã hóa AES-256)");
 
                 foreach (DevExportRowDto row in result.Rows)
                 {
-                    dt.Rows.Add(row.Id, row.MaskedCccd, row.CipherText);
+                    dt.Rows.Add(row.Id, row.MaKh, row.MaskedName, row.MaskedEmail, row.CipherCccd);
                 }
 
                 dgvDev.DataSource = dt;
@@ -492,8 +509,10 @@ namespace DataMaskingSystem
     internal sealed class DevExportRowDto
     {
         public string Id { get; set; } = "";
-        public string MaskedCccd { get; set; } = "";
-        public string CipherText { get; set; } = "";
+        public string MaKh { get; set; } = "";
+        public string MaskedName { get; set; } = "";
+        public string MaskedEmail { get; set; } = "";
+        public string CipherCccd { get; set; } = "";
     }
 
     internal sealed class DevExportResponse

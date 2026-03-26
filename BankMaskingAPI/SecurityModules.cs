@@ -21,8 +21,10 @@ namespace BankMaskingAPI
     public sealed class DevExportRowDto
     {
         public string Id { get; set; } = "";
-        public string MaskedCccd { get; set; } = "";
-        public string CipherText { get; set; } = "";
+        public string MaKh { get; set; } = "";
+        public string MaskedName { get; set; } = "";
+        public string MaskedEmail { get; set; } = "";
+        public string CipherCccd { get; set; } = "";
     }
 
     public sealed class DevExportResponse
@@ -112,7 +114,10 @@ namespace BankMaskingAPI
             response.DbFields.Add("ID Hệ Thống", reader["CustomerID"]?.ToString());
             response.DbFields.Add("Mã KH", reader["MaKhachHang"]?.ToString());
             response.DbFields.Add("Họ tên (Mask)", new string(maskedName));
-            response.DbFields.Add("Ngày sinh", reader["NgaySinh"]?.ToString());
+            string ngaySinhFormatted = reader["NgaySinh"] != DBNull.Value
+    ? Convert.ToDateTime(reader["NgaySinh"]).ToString("dd/MM/yyyy")
+    : "";
+            response.DbFields.Add("Ngày sinh", ngaySinhFormatted);
             response.DbFields.Add("Giới tính", gioiTinh);
             response.DbFields.Add("CCCD (Mask)", new string(maskedCccd));
             response.DbFields.Add("Quốc tịch", reader["QuocTich"]?.ToString());
@@ -147,7 +152,7 @@ namespace BankMaskingAPI
             var result = new DevExportResponse();
             using var conn = new MySqlConnection(_connectionString);
             conn.Open();
-            using var cmd = new MySqlCommand("SELECT CustomerID, SoCCCD FROM Customers LIMIT 5", conn);
+            using var cmd = new MySqlCommand("SELECT CustomerID, MaKhachHang, HoTen, Email, SoCCCD FROM Customers LIMIT 10", conn);
             using var reader = cmd.ExecuteReader();
 
             char[] aesSessionKey = CustomRSA.GenerateRandomSessionKey(32);
@@ -156,19 +161,26 @@ namespace BankMaskingAPI
 
             while (reader.Read())
             {
-                char[] cccd = CustomStringHelper.ToCharArray(reader["SoCCCD"].ToString() ?? string.Empty);
-                char[] maskedCccd = CustomDataMasker.ShiftMask(cccd, 3);
-                char[] cipherCccd = CustomAES.EncryptData(maskedCccd, decryptedAesKey);
+                char[] name = CustomStringHelper.ToCharArray(reader["HoTen"]?.ToString() ?? "");
+                char[] maskedName = CustomDataMasker.MaskFullName(name);
+
+                char[] email = CustomStringHelper.ToCharArray(reader["Email"]?.ToString() ?? "");
+                char[] maskedEmail = CustomDataMasker.MaskEmail(email);
+
+                char[] cccd = CustomStringHelper.ToCharArray(reader["SoCCCD"]?.ToString() ?? "");
+                char[] cipherCccd = CustomAES.EncryptData(cccd, decryptedAesKey);
 
                 result.Rows.Add(new DevExportRowDto
                 {
-                    Id = reader["CustomerID"].ToString() ?? "",
-                    MaskedCccd = new string(maskedCccd),
-                    CipherText = new string(cipherCccd)
+                    Id = reader["CustomerID"]?.ToString() ?? "",
+                    MaKh = reader["MaKhachHang"]?.ToString() ?? "",
+                    MaskedName = new string(maskedName),
+                    MaskedEmail = new string(maskedEmail),
+                    CipherCccd = new string(cipherCccd)
                 });
             }
 
-            result.ConsoleMessage = "[RSA] Đang trao đổi khóa phiên AES an toàn...\n[DEV] Áp dụng Mô hình lai ghép RSA-AES và trích xuất DB thành công.";
+            result.ConsoleMessage = "[RSA] Đã tạo và trao đổi khóa phiên AES 256-bit an toàn.\n[DEV] Áp dụng Masking tĩnh (Họ tên, Email) và Mã hóa AES (CCCD).\n[DEV] Trích xuất tập dữ liệu mẫu thành công cho môi trường TEST.";
 
             return result;
         }

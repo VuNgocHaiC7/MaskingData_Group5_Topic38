@@ -40,49 +40,8 @@ namespace DataMaskingSystem
             host.BackColor = Color.FromArgb(242, 244, 248);
             host.ForeColor = Color.FromArgb(21, 32, 60);
 
-            Panel sidebar = new Panel
-            {
-                Dock = DockStyle.Left,
-                Width = 220,
-                BackColor = Color.FromArgb(248, 250, 253)
-            };
-
-            Label brand = new Label
-            {
-                Text = "The Financial Atelier",
-                Font = new Font("Bahnschrift SemiBold", 16, FontStyle.Bold),
-                ForeColor = Color.FromArgb(20, 49, 126),
-                AutoSize = true,
-                Location = new Point(18, 22)
-            };
-            sidebar.Controls.Add(brand);
-
-            Label navContext = new Label
-            {
-                Text = "Client Desk",
-                Font = new Font("Bahnschrift", 10, FontStyle.Underline),
-                ForeColor = Color.FromArgb(34, 84, 197),
-                AutoSize = true,
-                Location = new Point(18, 58)
-            };
-            sidebar.Controls.Add(navContext);
-
-            sidebar.Controls.Add(CreateSidebarItem("Dashboard", 120, false));
-            sidebar.Controls.Add(CreateSidebarItem("Customers", 154, true));
-            sidebar.Controls.Add(CreateSidebarItem("Accounts", 188, false));
-            sidebar.Controls.Add(CreateSidebarItem("Transactions", 222, false));
-            sidebar.Controls.Add(CreateSidebarItem("Compliance", 256, false));
-
-            Label support = new Label
-            {
-                Text = "Support",
-                Font = new Font("Bahnschrift", 10, FontStyle.Regular),
-                ForeColor = Color.FromArgb(104, 117, 146),
-                AutoSize = true,
-                Location = new Point(18, host.ClientSize.Height - 48),
-                Anchor = AnchorStyles.Left | AnchorStyles.Bottom
-            };
-            sidebar.Controls.Add(support);
+            int fullWidth = host.ClientSize.Width;
+            int canvasWidth = fullWidth - 32;
 
             Panel content = new Panel
             {
@@ -94,6 +53,7 @@ namespace DataMaskingSystem
             {
                 Dock = DockStyle.Top,
                 Height = 92,
+                Width = fullWidth,
                 BackColor = Color.FromArgb(242, 244, 248)
             };
 
@@ -117,30 +77,16 @@ namespace DataMaskingSystem
             };
             topBar.Controls.Add(pageTitle);
 
-            TextBox topSearch = new TextBox
-            {
-                Text = "Search accounts...",
-                Font = new Font("Bahnschrift", 10, FontStyle.Regular),
-                Location = new Point(560, 34),
-                Width = 220,
-                Height = 34,
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(138, 149, 174),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            topBar.Controls.Add(topSearch);
-
             Button btnLogout = new Button
             {
-                Text = "Logout",
+                Text = "Đăng xuất",
                 Width = 126,
                 Height = 38,
                 BackColor = Color.FromArgb(16, 70, 163),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Bahnschrift SemiBold", 10, FontStyle.Bold),
-                Location = new Point(800, 32),
+                Location = new Point(fullWidth - 160, 32),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             btnLogout.FlatAppearance.BorderSize = 0;
@@ -204,7 +150,7 @@ namespace DataMaskingSystem
             int detailY = 352;
             int labelX = 20;
             int valueX = 100;
-            int stepY = 24; 
+            int stepY = 24;
 
             Font titleFont = new Font("Segoe UI", 9, FontStyle.Regular);
             Font valFont = new Font("Segoe UI", 9, FontStyle.Bold);
@@ -232,7 +178,7 @@ namespace DataMaskingSystem
             profileCard.Controls.Add(CreateTitle("Email:", detailY));
             Label lblEmail = CreateVal(detailY); profileCard.Controls.Add(lblEmail);
 
-            Panel contentCard = CreateCardPanel(new Rectangle(320, 0, 780, 552), Color.White);
+            Panel contentCard = CreateCardPanel(new Rectangle(320, 0, canvasWidth - 320, 552), Color.White);
             contentCard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
             Panel metricCard = new Panel
@@ -244,7 +190,7 @@ namespace DataMaskingSystem
             metricCard.Paint += DrawCardBorder;
             metricCard.Controls.Add(new Label
             {
-                Text = "Số thẻ (PCI-DSS Masked)", // Đổi tiêu đề
+                Text = "Số thẻ (PCI-DSS Masked)",
                 Font = new Font("Bahnschrift", 10, FontStyle.Regular),
                 ForeColor = Color.FromArgb(174, 214, 255),
                 Location = new Point(16, 14),
@@ -252,7 +198,7 @@ namespace DataMaskingSystem
             });
             Label lblMaskedCard = new Label
             {
-                Text = "**** **** **** ****", // Giá trị mặc định
+                Text = "**** **** **** ****",
                 Font = new Font("Bahnschrift SemiBold", 20, FontStyle.Bold),
                 ForeColor = Color.White,
                 Location = new Point(16, 40),
@@ -264,7 +210,7 @@ namespace DataMaskingSystem
             Panel statusCard = CreateCardPanel(new Rectangle(524, 20, 232, 102), Color.FromArgb(246, 248, 252));
             statusCard.Controls.Add(new Label
             {
-                Text = "Số dư hiện tại", // Đổi tiêu đề
+                Text = "Số dư hiện tại",
                 Font = new Font("Bahnschrift", 9, FontStyle.Regular),
                 ForeColor = Color.FromArgb(99, 110, 136),
                 Location = new Point(12, 13),
@@ -272,7 +218,7 @@ namespace DataMaskingSystem
             });
             Label lblBalance = new Label
             {
-                Text = "0 VNĐ", // Giá trị mặc định
+                Text = "0 VNĐ",
                 Font = new Font("Bahnschrift SemiBold", 16, FontStyle.Bold),
                 ForeColor = Color.FromArgb(31, 43, 74),
                 Location = new Point(12, 40),
@@ -296,12 +242,12 @@ namespace DataMaskingSystem
                 Location = new Point(22, 172),
                 Width = 160,
                 Font = new Font("Bahnschrift", 11, FontStyle.Regular),
-                DropDownStyle = ComboBoxStyle.DropDownList, 
+                DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Color.FromArgb(250, 251, 254),
                 ForeColor = Color.FromArgb(31, 43, 74)
             };
             cboSearchType.Items.AddRange(new string[] { "Số điện thoại", "Số CMND/CCCD", "Số TK / Số thẻ" });
-            cboSearchType.SelectedIndex = 0; 
+            cboSearchType.SelectedIndex = 0;
             contentCard.Controls.Add(cboSearchType);
 
             TextBox txtSearchID = new TextBox
@@ -339,67 +285,72 @@ namespace DataMaskingSystem
             };
             contentCard.Controls.Add(lblPropertyTitle);
 
-            DataGridView dgvCustomerDetails = BuildGrid(new Rectangle(22, 244, 734, 290));
+            DataGridView dgvCustomerDetails = BuildGrid(new Rectangle(22, 244, canvasWidth - 364, 290));
             dgvCustomerDetails.DefaultCellStyle.Font = new Font("Bahnschrift", 9, FontStyle.Regular);
+            dgvCustomerDetails.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             contentCard.Controls.Add(dgvCustomerDetails);
 
-            Panel devHeaderCard = CreateCardPanel(new Rectangle(0, 0, 1100, 122), Color.White);
+            Panel devHeaderCard = CreateCardPanel(new Rectangle(0, 0, canvasWidth, 90), Color.White);
             devHeaderCard.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            devHeaderCard.Controls.Add(new Label
-            {
-                Text = "DEV / TEST DATA DELIVERY",
-                Font = new Font("Bahnschrift SemiBold", 18, FontStyle.Bold),
-                ForeColor = Color.FromArgb(31, 43, 74),
-                Location = new Point(20, 20),
-                AutoSize = true
-            });
-            devHeaderCard.Controls.Add(new Label
-            {
-                Text = "Static masking + encryption pipeline preview for test environments",
-                Font = new Font("Bahnschrift", 10, FontStyle.Regular),
-                ForeColor = Color.FromArgb(92, 106, 136),
-                Location = new Point(22, 56),
-                AutoSize = true
-            });
+
+            Label devTitle = new Label { Text = "STATIC DATA MASKING (DEV / TEST)", Font = new Font("Bahnschrift SemiBold", 16, FontStyle.Bold), ForeColor = Color.FromArgb(31, 43, 74), Location = new Point(20, 20), AutoSize = true };
+            devHeaderCard.Controls.Add(devTitle);
+
+            Label devSub = new Label { Text = "Trích xuất dữ liệu mẫu đã được làm mờ và mã hóa cho môi trường kiểm thử.", Font = new Font("Bahnschrift", 10, FontStyle.Regular), ForeColor = Color.FromArgb(92, 106, 136), Location = new Point(22, 52), AutoSize = true };
+            devHeaderCard.Controls.Add(devSub);
 
             Button btnExport = new Button
             {
-                Text = "Export Secure Dataset",
-                Location = new Point(878, 34),
+                Text = "Xuất Dữ liệu Test (Export)",
+                Location = new Point(canvasWidth - 220, 24), // Fix cứng vị trí không sợ nhảy khung
                 Width = 190,
                 Height = 42,
                 BackColor = Color.FromArgb(232, 101, 38),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Bahnschrift SemiBold", 10, FontStyle.Bold),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Cursor = Cursors.Hand
             };
             btnExport.FlatAppearance.BorderSize = 0;
             btnExport.Click += onExportClick;
             devHeaderCard.Controls.Add(btnExport);
 
-            Panel devTableCard = CreateCardPanel(new Rectangle(0, 138, 1100, 414), Color.White);
-            devTableCard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            devTableCard.Controls.Add(new Label
-            {
-                Text = "Account Portfolio & Transactions",
-                Font = new Font("Bahnschrift SemiBold", 13, FontStyle.Bold),
-                ForeColor = Color.FromArgb(36, 51, 85),
-                Location = new Point(20, 18),
-                AutoSize = true
-            });
+            int cardW = (canvasWidth - 32) / 3;
+            Panel infoCard1 = CreateCardPanel(new Rectangle(0, 106, cardW, 80), Color.FromArgb(246, 248, 252));
+            infoCard1.Controls.Add(new Label { Text = "Mô hình bảo mật", Font = new Font("Bahnschrift", 9), ForeColor = Color.FromArgb(99, 110, 136), Location = new Point(16, 16), AutoSize = true });
+            infoCard1.Controls.Add(new Label { Text = "Lai ghép RSA + AES-256", Font = new Font("Bahnschrift SemiBold", 12, FontStyle.Bold), ForeColor = Color.FromArgb(31, 43, 74), Location = new Point(16, 40), AutoSize = true });
 
-            DataGridView dgvDev = BuildGrid(new Rectangle(20, 52, 1060, 342));
+            Panel infoCard2 = CreateCardPanel(new Rectangle(cardW + 16, 106, cardW, 80), Color.FromArgb(246, 248, 252));
+            infoCard2.Controls.Add(new Label { Text = "Quy tắc làm mờ (Masking)", Font = new Font("Bahnschrift", 9), ForeColor = Color.FromArgb(99, 110, 136), Location = new Point(16, 16), AutoSize = true });
+            infoCard2.Controls.Add(new Label { Text = "Data Redaction & Substitution", Font = new Font("Bahnschrift SemiBold", 12, FontStyle.Bold), ForeColor = Color.FromArgb(31, 43, 74), Location = new Point(16, 40), AutoSize = true });
+
+            Panel infoCard3 = CreateCardPanel(new Rectangle((cardW + 16) * 2, 106, cardW, 80), Color.FromArgb(246, 248, 252));
+            infoCard3.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            infoCard3.Controls.Add(new Label { Text = "Môi trường đích", Font = new Font("Bahnschrift", 9), ForeColor = Color.FromArgb(99, 110, 136), Location = new Point(16, 16), AutoSize = true });
+            infoCard3.Controls.Add(new Label { Text = "QA / Staging (Non-Prod)", Font = new Font("Bahnschrift SemiBold", 12, FontStyle.Bold), ForeColor = Color.FromArgb(31, 43, 74), Location = new Point(16, 40), AutoSize = true });
+
+            Panel devTableCard = CreateCardPanel(new Rectangle(0, 202, canvasWidth, 350), Color.White);
+            devTableCard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            devTableCard.Controls.Add(new Label { Text = "Bản xem trước Dữ liệu mẫu (Preview)", Font = new Font("Bahnschrift SemiBold", 13, FontStyle.Bold), ForeColor = Color.FromArgb(36, 51, 85), Location = new Point(20, 18), AutoSize = true });
+
+            DataGridView dgvDev = BuildGrid(new Rectangle(20, 52, canvasWidth - 40, 278));
             dgvDev.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            dgvDev.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+            dgvDev.ScrollBars = ScrollBars.Both;
+
+            devTableCard.Controls.Add(dgvDev);
             devTableCard.Controls.Add(dgvDev);
 
             pnlCSKH.Controls.Add(profileCard);
             pnlCSKH.Controls.Add(contentCard);
 
             pnlDEV.Controls.Add(devHeaderCard);
+            pnlDEV.Controls.Add(infoCard1);
+            pnlDEV.Controls.Add(infoCard2);
+            pnlDEV.Controls.Add(infoCard3);
             pnlDEV.Controls.Add(devTableCard);
 
-            Panel consoleCard = CreateCardPanel(new Rectangle(16, 566, 1100, 136), Color.FromArgb(6, 16, 35));
+            Panel consoleCard = CreateCardPanel(new Rectangle(16, 566, canvasWidth, 136), Color.FromArgb(6, 16, 35));
             consoleCard.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             consoleCard.Controls.Add(new Label
             {
@@ -413,7 +364,7 @@ namespace DataMaskingSystem
             RichTextBox txtConsole = new RichTextBox
             {
                 Location = new Point(14, 34),
-                Size = new Size(1072, 88),
+                Size = new Size(canvasWidth - 28, 88),
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Consolas", 10),
                 BackColor = Color.FromArgb(6, 16, 35),
@@ -432,7 +383,6 @@ namespace DataMaskingSystem
             content.Controls.Add(topBar);
 
             host.Controls.Add(content);
-            host.Controls.Add(sidebar);
 
             return new MainFormUiComponents
             {
@@ -457,27 +407,6 @@ namespace DataMaskingSystem
                 LblProfilePhone = lblPhone,
                 LblProfileEmail = lblEmail,
             };
-        }
-
-        private static Panel CreateSidebarItem(string text, int y, bool active)
-        {
-            Panel item = new Panel
-            {
-                Location = new Point(8, y),
-                Size = new Size(202, 30),
-                BackColor = active ? Color.FromArgb(234, 241, 255) : Color.Transparent
-            };
-
-            Label label = new Label
-            {
-                Text = text,
-                Font = new Font("Bahnschrift", 10, active ? FontStyle.Bold : FontStyle.Regular),
-                ForeColor = active ? Color.FromArgb(19, 72, 180) : Color.FromArgb(104, 117, 146),
-                Location = new Point(18, 6),
-                AutoSize = true
-            };
-            item.Controls.Add(label);
-            return item;
         }
 
         private static Panel CreateCardPanel(Rectangle bounds, Color backColor)
@@ -521,7 +450,7 @@ namespace DataMaskingSystem
             grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = Color.White,
-                ForeColor = Color.FromArgb(136, 148, 160), 
+                ForeColor = Color.FromArgb(136, 148, 160),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 Padding = new Padding(12, 0, 0, 0)
             };
