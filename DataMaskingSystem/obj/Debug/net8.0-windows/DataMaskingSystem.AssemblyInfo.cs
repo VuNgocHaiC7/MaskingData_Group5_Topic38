@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DataMaskingSystem")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9e35d3d1f5607318002911b739fb5c07da88070c")]
 [assembly: System.Reflection.AssemblyProductAttribute("DataMaskingSystem")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DataMaskingSystem")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
