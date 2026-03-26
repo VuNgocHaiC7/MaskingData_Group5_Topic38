@@ -1,11 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
-using System.Text;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
 using System.Windows.Forms;
-using MySql.Data.MySqlClient;
 
-// 2 DÒNG NÀY SẼ ĐÁNH BAY DỨT ĐIỂM LỖI CS0104
 using Application = System.Windows.Forms.Application;
 using Font = System.Drawing.Font;
 
@@ -44,17 +48,29 @@ namespace DataMaskingSystem
 
     public class MainForm : Form
     {
-        // ⚠️ THAY MẬT KHẨU CỦA BẠN VÀO ĐÂY (Mình đang để tạm 123456)
-        string connectionString = "Server=127.0.0.1;Port=3306;Database=BankSystemMasking;Uid=root;Pwd=123456;";
+        static readonly HttpClient ApiClient = new HttpClient
+        {
+            BaseAddress = new Uri("http://localhost:5059/"),
+            Timeout = TimeSpan.FromSeconds(60)
+        };
 
-        // Các thành phần giao diện
+        static readonly JsonSerializerOptions JsonReadOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
         Panel pnlCSKH, pnlDEV;
         TextBox txtSearchID;
         Button btnSearch, btnExport, btnLogout;
-        RichTextBox txtResultCSKH;
         Label lblRole;
         RichTextBox txtConsole;
         DataGridView dgvDev;
+        DataGridView dgvCustomerDetails;
+        PictureBox picPortrait;
+        Label lblMaskedCard;
+        Label lblBalance;
+        ComboBox cboSearchType;
+        Label lblProfileName, lblProfileDob, lblProfileGender, lblProfileCccd, lblProfilePhone, lblProfileEmail;
         readonly string selectedRole;
 
         public bool ShouldLogout { get; private set; }
@@ -66,9 +82,6 @@ namespace DataMaskingSystem
             ApplyRolePermissions();
         }
 
-        // ==========================================
-        // 1. TỰ ĐỘNG VẼ GIAO DIỆN KHÔNG CẦN KÉO THẢ
-        // ==========================================
         private void SetupUI()
         {
             MainFormUiComponents ui = MainFormUiManager.Build(this, BtnSearch_Click, BtnExport_Click, BtnLogout_Click);
@@ -78,12 +91,36 @@ namespace DataMaskingSystem
             btnSearch = ui.BtnSearch;
             btnExport = ui.BtnExport;
             btnLogout = ui.BtnLogout;
-            txtResultCSKH = ui.TxtResultCSKH;
             lblRole = ui.LblRole;
             txtConsole = ui.TxtConsole;
             dgvDev = ui.DgvDev;
+            dgvCustomerDetails = ui.DgvCustomerDetails;
+            picPortrait = ui.PicPortrait;
+            lblMaskedCard = ui.LblMaskedCard;
+            lblBalance = ui.LblBalance;
+            cboSearchType = ui.CboSearchType;
+            lblProfileName = ui.LblProfileName;
+            lblProfileDob = ui.LblProfileDob;
+            lblProfileGender = ui.LblProfileGender;
+            lblProfileCccd = ui.LblProfileCccd;
+            lblProfilePhone = ui.LblProfilePhone;
+            lblProfileEmail = ui.LblProfileEmail;
 
-            LogToConsole("Hệ thống UI mới đã sẵn sàng.");
+            dgvCustomerDetails.CellFormatting += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && e.ColumnIndex == 0)
+                {
+                    e.CellStyle.ForeColor = Color.FromArgb(108, 122, 137);
+                    e.CellStyle.Font = new Font("Segoe UI", 10, FontStyle.Regular);
+                }
+                else if (e.RowIndex >= 0 && e.ColumnIndex == 1)
+                {
+                    e.CellStyle.ForeColor = Color.FromArgb(15, 23, 42);
+                    e.CellStyle.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+                }
+            };
+
+            LogToConsole("Hệ thống UI đã sẵn sàng.");
         }
 
         private void ApplyRolePermissions()
@@ -114,158 +151,297 @@ namespace DataMaskingSystem
             txtConsole.SelectedText = "> " + message + "\n";
         }
 
-        // ==========================================
-        // 2. LUỒNG NGHIỆP VỤ & SỰ KIỆN NÚT BẤM
-        // ==========================================
-        private void BtnSearch_Click(object sender, EventArgs e)
+        private async void BtnSearch_Click(object sender, EventArgs e)
         {
-            using (MySqlConnection conn = new MySqlConnection(connectionString))
+            try
             {
-                try
+                string keyword = txtSearchID.Text.Trim();
+                if (string.IsNullOrEmpty(keyword))
                 {
-                    conn.Open();
-                    string query = @"SELECT HoTen, HoTen_EN, NgaySinh, GioiTinh, SoCCCD, MaKhachHang,
-                                            SoDienThoai, SoDienThoai2, Email, DiaChiNha, Tinh_ThanhPho,
-                                            SoTaiKhoan, SoTaiKhoan_Phu, SoDu, HanMucTinDung, LoaiTaiKhoan,
-                                            TrangThaiKYC, TenCongTy, MaGiaoDich, NgayGioGD
-                                     FROM Customers
-                                     WHERE CustomerID = @customerId
-                                     LIMIT 1";
-                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
-                    {
-                        cmd.Parameters.AddWithValue("@customerId", txtSearchID.Text.Trim());
-
-                    using (MySqlDataReader reader = cmd.ExecuteReader())
-                    {
-                        if (reader.Read())
-                        {
-                            string hoTenRaw = reader["HoTen"]?.ToString() ?? string.Empty;
-                            string soDienThoaiRaw = reader["SoDienThoai"]?.ToString() ?? string.Empty;
-                            string soTaiKhoanRaw = reader["SoTaiKhoan"]?.ToString() ?? string.Empty;
-                            string soCccdRaw = reader["SoCCCD"]?.ToString() ?? string.Empty;
-                            string emailRaw = reader["Email"]?.ToString() ?? string.Empty;
-
-                            char[] name = CustomStringHelper.ToCharArray(hoTenRaw);
-                            char[] phone = CustomStringHelper.ToCharArray(soDienThoaiRaw);
-                            char[] acc = CustomStringHelper.ToCharArray(soTaiKhoanRaw);
-                            char[] cccd = CustomStringHelper.ToCharArray(soCccdRaw);
-                            char[] email = CustomStringHelper.ToCharArray(emailRaw);
-
-                            // 1. Dynamic Data Masking
-                            char[] maskedName = CustomDataMasker.MaskFullName(name);
-                            char[] maskedPhone = CustomDataMasker.MaskPhoneNumber(phone);
-                            char[] maskedAcc = CustomDataMasker.MaskBankAccount(acc);
-                            char[] maskedCccd = CustomDataMasker.MaskBankAccount(cccd);
-                            char[] maskedEmail = CustomDataMasker.MaskEmail(email);
-
-                            // 2. Mã hóa đường truyền XOR
-                            char[] key = CustomStringHelper.ToCharArray("KEY123");
-                            char[] encPhone = CustomCryptography.XorEncryptDecrypt(maskedPhone, key);
-                            char[] encAcc = CustomCryptography.XorEncryptDecrypt(maskedAcc, key);
-
-                            LogToConsole($"[KÊNH TRUYỀN] Bắt được gói tin mã hóa XOR:\nSĐT: {new string(encPhone)} | STK: {new string(encAcc)}");
-
-                            // 3. Giải mã hiển thị lên UI
-                            char[] decPhone = CustomCryptography.XorEncryptDecrypt(encPhone, key);
-                            char[] decAcc = CustomCryptography.XorEncryptDecrypt(encAcc, key);
-
-                            string gioiTinh = (reader["GioiTinh"]?.ToString() ?? string.Empty) switch
-                            {
-                                "0" => "Nam",
-                                "1" => "Nữ",
-                                _ => "Không rõ"
-                            };
-
-                            string loaiTaiKhoan = (reader["LoaiTaiKhoan"]?.ToString() ?? string.Empty) switch
-                            {
-                                "1" => "Thường",
-                                "2" => "VIP",
-                                "3" => "Premium",
-                                _ => "Không rõ"
-                            };
-
-                            string trangThaiKyc = (reader["TrangThaiKYC"]?.ToString() ?? string.Empty) switch
-                            {
-                                "0" => "Chưa KYC",
-                                "1" => "Đang xét duyệt",
-                                "2" => "Đạt",
-                                _ => "Không rõ"
-                            };
-
-                            StringBuilder resultBuilder = new StringBuilder();
-                            resultBuilder.AppendLine("KẾT QUẢ TRA CỨU CHI TIẾT (CSKH)");
-                            resultBuilder.AppendLine();
-                            resultBuilder.AppendLine($"Mã KH         : {reader["MaKhachHang"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Họ tên (Mask) : {new string(maskedName)}");
-                            resultBuilder.AppendLine($"Họ tên EN     : {reader["HoTen_EN"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Ngày sinh     : {reader["NgaySinh"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Giới tính     : {gioiTinh}");
-                            resultBuilder.AppendLine($"CCCD (Mask)   : {new string(maskedCccd)}");
-                            resultBuilder.AppendLine($"SĐT chính     : {new string(decPhone)}");
-                            resultBuilder.AppendLine($"SĐT phụ       : {reader["SoDienThoai2"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Email (Mask)  : {new string(maskedEmail)}");
-                            resultBuilder.AppendLine($"Địa chỉ       : {reader["DiaChiNha"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Tỉnh/TP       : {reader["Tinh_ThanhPho"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"TK chính      : {new string(decAcc)}");
-                            resultBuilder.AppendLine($"TK phụ        : {reader["SoTaiKhoan_Phu"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Số dư         : {reader["SoDu"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Hạn mức TD    : {reader["HanMucTinDung"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Loại TK       : {loaiTaiKhoan}");
-                            resultBuilder.AppendLine($"Trạng thái KYC: {trangThaiKyc}");
-                            resultBuilder.AppendLine($"Công ty       : {reader["TenCongTy"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Mã giao dịch  : {reader["MaGiaoDich"]?.ToString() ?? string.Empty}");
-                            resultBuilder.AppendLine($"Lần GD gần nhất: {reader["NgayGioGD"]?.ToString() ?? string.Empty}");
-
-                            txtResultCSKH.Text = resultBuilder.ToString();
-                        }
-                        else
-                        {
-                            txtResultCSKH.Text = "Không tìm thấy khách hàng!";
-                        }
-                    }
-                    }
+                    MessageBox.Show("Vui lòng nhập thông tin cần tìm!");
+                    return;
                 }
-                catch (Exception ex) { MessageBox.Show("Lỗi CSDL: " + ex.Message); }
+                int searchType = cboSearchType.SelectedIndex;
+                string url = $"api/customer/cskh/search?type={searchType}&keyword={Uri.EscapeDataString(keyword)}";
+                using HttpResponseMessage response = await ApiClient.GetAsync(url);
+
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    ApiErrorResponse? notFound = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonReadOptions);
+                    LogToConsole(notFound?.Message ?? "Không tìm thấy khách hàng!");
+                    BindCustomerDetails(null);
+                    UpdatePortraitImage(null);
+                    return;
+                }
+
+                response.EnsureSuccessStatusCode();
+                CskhSearchResponse? result = await response.Content.ReadFromJsonAsync<CskhSearchResponse>(JsonReadOptions);
+                if (result == null)
+                {
+                    MessageBox.Show("Phản hồi không hợp lệ từ máy chủ.");
+                    return;
+                }
+
+                if (!result.Found)
+                {
+                    LogToConsole(result.DisplayText ?? "Không tìm thấy khách hàng!");
+                    BindCustomerDetails(null);
+                    UpdatePortraitImage(null);
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(result.ChannelLogMessage))
+                {
+                    LogToConsole(result.ChannelLogMessage);
+                }
+
+                if (!string.IsNullOrEmpty(result.DisplayText))
+                {
+                    LogToConsole(result.DisplayText.Replace("\r\n", " - "));
+                }
+
+                if (result.DbFields != null)
+                {
+                    lblProfileName.Text = ExtractAndRemove(result.DbFields, "Họ tên");
+                    lblProfileDob.Text = ExtractAndRemove(result.DbFields, "Ngày sinh");
+                    lblProfileGender.Text = ExtractAndRemove(result.DbFields, "Giới tính");
+                    lblProfileCccd.Text = ExtractAndRemove(result.DbFields, "Cccd");
+                    lblProfilePhone.Text = ExtractAndRemove(result.DbFields, "Sđt");
+                    lblProfileEmail.Text = ExtractAndRemove(result.DbFields, "Email");
+
+                    var cardKey = result.DbFields.Keys.FirstOrDefault(k => k.Contains("Số thẻ"));
+                    lblMaskedCard.Text = cardKey != null ? result.DbFields[cardKey] : "**** **** **** ****";
+
+                    // Tìm Số dư hiện tại
+                    var balanceKey = result.DbFields.Keys.FirstOrDefault(k => k.Contains("Số dư"));
+                    lblBalance.Text = balanceKey != null ? result.DbFields[balanceKey] : "0 VNĐ";
+                }
+
+                BindCustomerDetails(result.DbFields);
+                UpdatePortraitImage(result.PortraitImage);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi API: " + ex.Message);
             }
         }
 
-        private void BtnExport_Click(object sender, EventArgs e)
+        private void BindCustomerDetails(Dictionary<string, string?>? fields)
         {
             DataTable dt = new DataTable();
-            dt.Columns.Add("ID");
-            dt.Columns.Add("CCCD (Masked)");
-            dt.Columns.Add("CipherText (AES)");
+            dt.Columns.Add("Thuộc tính");
+            dt.Columns.Add("Giá trị");
 
-            using (MySqlConnection conn = new MySqlConnection(connectionString))
+            if (fields != null)
             {
-                try
+                foreach (KeyValuePair<string, string?> item in fields.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
                 {
-                    conn.Open();
-                    using (MySqlCommand cmd = new MySqlCommand("SELECT CustomerID, SoCCCD FROM Customers LIMIT 5", conn))
-                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    dt.Rows.Add(item.Key, item.Value ?? string.Empty);
+                }
+            }
+
+            dgvCustomerDetails.DataSource = dt;
+        }
+
+        private void UpdatePortraitImage(string? portraitImage)
+        {
+            if (picPortrait.Image != null)
+            {
+                picPortrait.Image.Dispose();
+                picPortrait.Image = null;
+            }
+
+            if (string.IsNullOrWhiteSpace(portraitImage))
+            {
+                return;
+            }
+
+            string? resolvedPath = ResolvePortraitPath(portraitImage);
+            if (resolvedPath == null)
+            {
+                LogToConsole("Không tìm thấy ảnh chân dung trên máy local. DB path: " + portraitImage);
+                return;
+            }
+
+            try
+            {
+                using (FileStream stream = new FileStream(resolvedPath, FileMode.Open, FileAccess.Read))
+                using (Image rawImage = Image.FromStream(stream))
+                {
+                    picPortrait.Image = new Bitmap(rawImage);
+                }
+
+                LogToConsole("Đã tải ảnh chân dung: " + resolvedPath);
+            }
+            catch (Exception)
+            {
+                LogToConsole("Không thể tải ảnh chân dung từ đường dẫn đã nhận.");
+            }
+        }
+
+        private static string? ResolvePortraitPath(string portraitImage)
+        {
+            string normalizedInput = NormalizePortraitPath(portraitImage);
+
+            string? directResolved = ResolveFileFromPathOrDirectory(normalizedInput);
+            if (directResolved != null)
+            {
+                return directResolved;
+            }
+
+            string[] roots =
+            {
+                Directory.GetCurrentDirectory(),
+                AppContext.BaseDirectory,
+                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..")),
+                @"e:\MaskingDataC#"
+            };
+
+            foreach (string root in roots)
+            {
+                string candidate = Path.Combine(root, normalizedInput);
+                string? resolved = ResolveFileFromPathOrDirectory(candidate);
+                if (resolved != null)
+                {
+                    return resolved;
+                }
+            }
+
+            string? recovered = RecoverMalformedPortraitPath(normalizedInput, roots);
+            if (recovered != null)
+            {
+                return recovered;
+            }
+
+            return null;
+        }
+
+        private static string NormalizePortraitPath(string portraitImage)
+        {
+            string path = portraitImage.Trim().Trim('"', '\'');
+            while (path.Contains("\\\\", StringComparison.Ordinal))
+            {
+                path = path.Replace("\\\\", "\\", StringComparison.Ordinal);
+            }
+            return path;
+        }
+
+        private static string? RecoverMalformedPortraitPath(string normalizedInput, string[] roots)
+        {
+            string inputToken = CanonicalPathToken(normalizedInput);
+            if (inputToken.Length == 0)
+            {
+                return null;
+            }
+
+            foreach (string root in roots)
+            {
+                string portraitRoot = Path.Combine(root, "PortraitImage");
+                if (!Directory.Exists(portraitRoot))
+                {
+                    continue;
+                }
+
+                foreach (string dir in Directory.GetDirectories(portraitRoot))
+                {
+                    string dirToken = CanonicalPathToken(dir);
+                    string nameToken = CanonicalPathToken(Path.GetFileName(dir));
+
+                    if (!inputToken.Contains(dirToken, StringComparison.Ordinal) &&
+                        !inputToken.EndsWith(nameToken, StringComparison.Ordinal))
                     {
-                        char[] aesSessionKey = CustomStringHelper.ToCharArray("KHOAAES");
+                        continue;
+                    }
 
-                        LogToConsole("[RSA] Đang trao đổi khóa phiên AES an toàn...");
-                        int[] encryptedAesKey = CustomRSA.EncryptAESKey(aesSessionKey);
-                        char[] decryptedAesKey = CustomRSA.DecryptAESKey(encryptedAesKey);
-
-                        while (reader.Read())
-                        {
-                            char[] cccd = CustomStringHelper.ToCharArray(reader["SoCCCD"].ToString());
-
-                            // 1. Static Data Masking (Shift Masking)
-                            char[] maskedCccd = CustomDataMasker.ShiftMask(cccd, 3);
-                            // 2. Mã hóa AES
-                            char[] cipherCccd = CustomAES.EncryptData(maskedCccd, decryptedAesKey);
-
-                            dt.Rows.Add(reader["CustomerID"].ToString(), new string(maskedCccd), new string(cipherCccd));
-                        }
-                        dgvDev.DataSource = dt;
-                        LogToConsole("[DEV] Áp dụng Mô hình lai ghép RSA-AES và trích xuất DB thành công.");
+                    string? resolved = ResolveFileFromPathOrDirectory(dir);
+                    if (resolved != null)
+                    {
+                        return resolved;
                     }
                 }
-                catch (Exception ex) { MessageBox.Show("Lỗi CSDL: " + ex.Message); }
+            }
+
+            return null;
+        }
+
+        private static string CanonicalPathToken(string path)
+        {
+            char[] buffer = new char[path.Length];
+            int index = 0;
+            foreach (char c in path)
+            {
+                if (char.IsLetterOrDigit(c))
+                {
+                    buffer[index++] = char.ToLowerInvariant(c);
+                }
+            }
+            return new string(buffer, 0, index);
+        }
+
+        private static string? ResolveFileFromPathOrDirectory(string path)
+        {
+            if (File.Exists(path))
+            {
+                return path;
+            }
+
+            if (!Directory.Exists(path))
+            {
+                return null;
+            }
+
+            string[] extensions = { "*.jpg", "*.jpeg", "*.png", "*.bmp", "*.webp", "*.gif" };
+            foreach (string extension in extensions)
+            {
+                string[] files = Directory.GetFiles(path, extension, SearchOption.TopDirectoryOnly);
+                if (files.Length > 0)
+                {
+                    return files[0];
+                }
+            }
+
+            return null;
+        }
+
+        private async void BtnExport_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using HttpResponseMessage response = await ApiClient.GetAsync("api/customer/dev/export");
+                response.EnsureSuccessStatusCode();
+                DevExportResponse? result = await response.Content.ReadFromJsonAsync<DevExportResponse>(JsonReadOptions);
+                if (result == null)
+                {
+                    MessageBox.Show("Phản hồi không hợp lệ từ máy chủ.");
+                    return;
+                }
+
+                DataTable dt = new DataTable();
+                dt.Columns.Add("ID");
+                dt.Columns.Add("CCCD (Masked)");
+                dt.Columns.Add("CipherText (AES)");
+
+                foreach (DevExportRowDto row in result.Rows)
+                {
+                    dt.Rows.Add(row.Id, row.MaskedCccd, row.CipherText);
+                }
+
+                dgvDev.DataSource = dt;
+
+                if (!string.IsNullOrEmpty(result.ConsoleMessage))
+                {
+                    foreach (string line in result.ConsoleMessage.Split('\n'))
+                    {
+                        if (!string.IsNullOrEmpty(line))
+                        {
+                            LogToConsole(line);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi API: " + ex.Message);
             }
         }
 
@@ -285,256 +461,45 @@ namespace DataMaskingSystem
             ShouldLogout = true;
             Close();
         }
+
+        private string ExtractAndRemove(Dictionary<string, string?> dict, string partialKey)
+        {
+            var key = dict.Keys.FirstOrDefault(k => k.ToLower().Contains(partialKey.ToLower()));
+            if (key != null)
+            {
+                string val = dict[key] ?? "---";
+                dict.Remove(key);
+                return val;
+            }
+            return "---";
+        }
     }
 
-    // =================================================================================
-    // CÁC MODULE THUẬT TOÁN BẢO MẬT & XỬ LÝ CHUỖI TỰ CHẾ 
-    // =================================================================================
-    public static class CustomStringHelper
+    internal sealed class CskhSearchResponse
     {
-        public static int GetLength(string input)
-        {
-            if (input == null) return 0;
-            int len = 0;
-            foreach (char c in input) len++;
-            return len;
-        }
-
-        public static char[] ToCharArray(string input)
-        {
-            if (input == null) return new char[0];
-            int len = GetLength(input);
-            char[] result = new char[len];
-            int i = 0;
-            foreach (char c in input)
-            {
-                result[i] = c;
-                i++;
-            }
-            return result;
-        }
+        public bool Found { get; set; }
+        public string? DisplayText { get; set; }
+        public string? ChannelLogMessage { get; set; }
+        public string? PortraitImage { get; set; }
+        public Dictionary<string, string?> DbFields { get; set; } = new Dictionary<string, string?>();
     }
 
-    public static class CustomHash
+    internal sealed class ApiErrorResponse
     {
-        public static char[] ComputeHash(char[] input)
-        {
-            if (input == null) return new char[0];
-            int len = 0;
-            foreach (char c in input) len++;
-            
-            char[] hash = new char[16];
-            for (int i = 0; i < 16; i++) hash[i] = '0';
-            for (int i = 0; i < len; i++)
-            {
-                int val = input[i];
-                val = ((val << 3) | (val >> 5)) ^ (i * 17);
-                int index = i % 16;
-                hash[index] = (char)((hash[index] + val) % 26 + 'A');
-            }
-            return hash;
-        }
+        public string? Message { get; set; }
     }
 
-    public static class CustomCryptography
+    internal sealed class DevExportRowDto
     {
-        public static char[] XorEncryptDecrypt(char[] input, char[] key)
-        {
-            if (input == null || key == null) return new char[0];
-            int lenInput = 0; foreach (char c in input) lenInput++;
-            int lenKey = 0; foreach (char c in key) lenKey++;
-            if (lenKey == 0) return input;
-            
-            char[] result = new char[lenInput];
-            for (int i = 0; i < lenInput; i++) result[i] = (char)(input[i] ^ key[i % lenKey]);
-            return result;
-        }
+        public string Id { get; set; } = "";
+        public string MaskedCccd { get; set; } = "";
+        public string CipherText { get; set; } = "";
     }
 
-    public static class CustomRSA
+    internal sealed class DevExportResponse
     {
-        public static int n = 143;
-        public static int e = 7;
-        public static int d = 103;
-
-        public static int[] EncryptAESKey(char[] aesKey)
-        {
-            if (aesKey == null) return new int[0];
-            int len = 0; foreach (char c in aesKey) len++;
-            
-            int[] encryptedKey = new int[len];
-            for (int i = 0; i < len; i++)
-            {
-                int m = aesKey[i] % n;
-                int c = 1;
-                for (int j = 0; j < e; j++) c = (c * m) % n;
-                encryptedKey[i] = c;
-            }
-            return encryptedKey;
-        }
-
-        public static char[] DecryptAESKey(int[] encryptedKey)
-        {
-            if (encryptedKey == null) return new char[0];
-            int len = 0; foreach (int k in encryptedKey) len++;
-            
-            char[] decryptedKey = new char[len];
-            for (int i = 0; i < len; i++)
-            {
-                int c = encryptedKey[i];
-                int m = 1;
-                for (int j = 0; j < d; j++) m = (m * c) % n;
-                decryptedKey[i] = (char)m;
-            }
-            return decryptedKey;
-        }
+        public List<DevExportRowDto> Rows { get; set; } = new List<DevExportRowDto>();
+        public string? ConsoleMessage { get; set; }
     }
 
-    public static class CustomAES
-    {
-        public static char[] EncryptData(char[] input, char[] key)
-        {
-            if (input == null || key == null) return new char[0];
-            int lenInput = 0; foreach (char c in input) lenInput++;
-            int lenKey = 0; foreach (char c in key) lenKey++;
-            if (lenKey == 0) return input;
-            
-            char[] result = new char[lenInput];
-            for (int i = 0; i < lenInput; i++) result[i] = (char)(input[i] + key[i % lenKey]);
-            return result;
-        }
-
-        public static char[] DecryptData(char[] input, char[] key)
-        {
-            if (input == null || key == null) return new char[0];
-            int lenInput = 0; foreach (char c in input) lenInput++;
-            int lenKey = 0; foreach (char c in key) lenKey++;
-            if (lenKey == 0) return input;
-            
-            char[] result = new char[lenInput];
-            for (int i = 0; i < lenInput; i++) result[i] = (char)(input[i] - key[i % lenKey]);
-            return result;
-        }
-    }
-
-    public static class CustomDataMasker
-    {
-        public static char[] MaskPhoneNumber(char[] input)
-        {
-            if (input == null) return new char[0];
-            int len = 0;
-            foreach (char c in input) len++;
-            
-            char[] result = new char[len];
-            for (int i = 0; i < len; i++)
-            {
-                if (i < 3 || i >= len - 3) result[i] = input[i];
-                else result[i] = '*';
-            }
-            return result;
-        }
-
-        public static char[] MaskFullName(char[] input)
-        {
-            if (input == null) return new char[0];
-            int len = 0;
-            foreach (char c in input) len++;
-            
-            char[] result = new char[len];
-            int firstSpace = 0;
-            while (firstSpace < len && input[firstSpace] != ' ') firstSpace++;
-            int lastSpace = len - 1;
-            while (lastSpace >= 0 && input[lastSpace] != ' ') lastSpace--;
-            
-            for (int i = 0; i < len; i++)
-            {
-                if (i < firstSpace || i > lastSpace || input[i] == ' ') 
-                    result[i] = input[i];
-                else 
-                    result[i] = '*';
-            }
-            return result;
-        }
-
-        public static char[] MaskBankAccount(char[] input)
-        {
-            if (input == null) return new char[0];
-            int len = 0;
-            foreach (char c in input) len++;
-            
-            char[] result = new char[len];
-            for (int i = 0; i < len; i++)
-            {
-                if (i >= len - 4) result[i] = input[i];
-                else result[i] = '*';
-            }
-            return result;
-        }
-
-        public static char[] ShiftMask(char[] input, int shiftVal)
-        {
-            if (input == null) return new char[0];
-            int len = 0;
-            foreach (char c in input) len++;
-            
-            char[] result = new char[len];
-            for (int i = 0; i < len; i++)
-            {
-                if (input[i] >= '0' && input[i] <= '9')
-                {
-                    int val = input[i] - '0';
-                    val = (val + shiftVal) % 10;
-                    result[i] = (char)(val + '0');
-                }
-                else
-                {
-                    result[i] = input[i];
-                }
-            }
-            return result;
-        }
-
-        public static char[] MaskEmail(char[] input)
-        {
-            if (input == null) return new char[0];
-            int len = 0; foreach (char c in input) len++;
-            
-            char[] result = new char[len];
-            int atIndex = -1;
-            for (int i = 0; i < len; i++)
-            {
-                if (input[i] == '@') { atIndex = i; break; }
-            }
-
-            if (atIndex == -1) // Không phải định dạng email
-            {
-                for (int i = 0; i < len; i++) result[i] = '*';
-                return result;
-            }
-
-            for (int i = 0; i < len; i++)
-            {
-                if (i == 0 || i >= atIndex - 1) 
-                    result[i] = input[i];
-                else 
-                    result[i] = '*';
-            }
-            return result;
-        }
-
-        public static void ShuffleBalances(decimal[] balances)
-        {
-            if (balances == null) return;
-            int len = 0; foreach (decimal d in balances) len++;
-            if (len <= 1) return;
-
-            // Thuật toán hoán vị chéo đơn giản
-            for (int i = 0; i < len - 1; i += 2)
-            {
-                decimal temp = balances[i];
-                balances[i] = balances[i + 1];
-                balances[i + 1] = temp;
-            }
-        }
-    }
 }
