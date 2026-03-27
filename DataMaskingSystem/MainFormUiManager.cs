@@ -27,6 +27,7 @@ namespace DataMaskingSystem
         public Label LblProfileCccd { get; set; }
         public Label LblProfilePhone { get; set; }
         public Label LblProfileEmail { get; set; }
+        public Button BtnSaveFile { get; set; }
     }
 
     public static class MainFormUiManager
@@ -69,7 +70,7 @@ namespace DataMaskingSystem
 
             Label pageTitle = new Label
             {
-                Text = "Private Banking | Customer Context",
+                Text = "Kiểm soát thông tin khách hàng",
                 Font = new Font("Bahnschrift SemiBold", 18, FontStyle.Bold),
                 ForeColor = Color.FromArgb(26, 40, 72),
                 Location = new Point(16, 34),
@@ -93,11 +94,12 @@ namespace DataMaskingSystem
             btnLogout.Click += onLogoutClick;
             topBar.Controls.Add(btnLogout);
 
+            // --- ĐÃ TẮT AUTOSCROLL ĐỂ BẢNG TỰ QUẢN LÝ THANH CUỘN ---
             Panel canvas = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.FromArgb(242, 244, 248),
-                Padding = new Padding(16, 0, 16, 14)
+                Padding = new Padding(16, 0, 16, 14),
             };
 
             Panel pnlCSKH = new Panel
@@ -113,6 +115,7 @@ namespace DataMaskingSystem
                 BackColor = Color.FromArgb(242, 244, 248),
                 Visible = false
             };
+            // -------------------------------------------------------
 
             Panel profileCard = CreateCardPanel(new Rectangle(0, 0, 300, 552), Color.White);
             profileCard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
@@ -129,23 +132,16 @@ namespace DataMaskingSystem
 
             Label profileName = new Label
             {
-                Text = "Customer Snapshot",
+                Text = "Ảnh chân dung",
                 Font = new Font("Bahnschrift SemiBold", 18, FontStyle.Bold),
                 ForeColor = Color.FromArgb(28, 40, 68),
-                Location = new Point(20, 286),
-                AutoSize = true
+                Location = new Point(20, 280), 
+                Width = 260,           
+                Height = 40,
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleCenter
             };
             profileCard.Controls.Add(profileName);
-
-            Label profileDesc = new Label
-            {
-                Text = "Masked profile + verified context",
-                Font = new Font("Bahnschrift", 10, FontStyle.Regular),
-                ForeColor = Color.FromArgb(93, 106, 133),
-                Location = new Point(20, 318),
-                AutoSize = true
-            };
-            profileCard.Controls.Add(profileDesc);
 
             int detailY = 352;
             int labelX = 20;
@@ -263,7 +259,7 @@ namespace DataMaskingSystem
 
             Button btnSearch = new Button
             {
-                Text = "Search Customer",
+                Text = "Tìm kiếm",
                 Location = new Point(440, 170),
                 Width = 150,
                 Height = 34,
@@ -275,9 +271,10 @@ namespace DataMaskingSystem
             btnSearch.FlatAppearance.BorderSize = 0;
             btnSearch.Click += onSearchClick;
             contentCard.Controls.Add(btnSearch);
+
             Label lblPropertyTitle = new Label
             {
-                Text = "Database Properties",
+                Text = "Thông tin chi tiết khách hàng",
                 Font = new Font("Bahnschrift SemiBold", 10, FontStyle.Bold),
                 ForeColor = Color.FromArgb(58, 72, 101),
                 Location = new Point(22, 220),
@@ -288,8 +285,12 @@ namespace DataMaskingSystem
             DataGridView dgvCustomerDetails = BuildGrid(new Rectangle(22, 244, canvasWidth - 364, 290));
             dgvCustomerDetails.DefaultCellStyle.Font = new Font("Bahnschrift", 9, FontStyle.Regular);
             dgvCustomerDetails.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            dgvCustomerDetails.ScrollBars = ScrollBars.Both; // Đảm bảo bật thanh cuộn
             contentCard.Controls.Add(dgvCustomerDetails);
 
+            // =====================================
+            // KHU VỰC GIAO DIỆN DEV / TEST
+            // =====================================
             Panel devHeaderCard = CreateCardPanel(new Rectangle(0, 0, canvasWidth, 90), Color.White);
             devHeaderCard.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
@@ -301,9 +302,9 @@ namespace DataMaskingSystem
 
             Button btnExport = new Button
             {
-                Text = "Xuất Dữ liệu Test (Export)",
-                Location = new Point(canvasWidth - 220, 24), // Fix cứng vị trí không sợ nhảy khung
-                Width = 190,
+                Text = "Tải Dữ liệu (Preview)",
+                Location = new Point(canvasWidth - 380, 24),
+                Width = 160,
                 Height = 42,
                 BackColor = Color.FromArgb(232, 101, 38),
                 ForeColor = Color.White,
@@ -314,6 +315,21 @@ namespace DataMaskingSystem
             btnExport.FlatAppearance.BorderSize = 0;
             btnExport.Click += onExportClick;
             devHeaderCard.Controls.Add(btnExport);
+
+            Button btnSaveFile = new Button
+            {
+                Text = "Lưu file (.CSV)",
+                Location = new Point(canvasWidth - 210, 24),
+                Width = 150,
+                Height = 42,
+                BackColor = Color.FromArgb(34, 166, 94),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Bahnschrift SemiBold", 10, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            btnSaveFile.FlatAppearance.BorderSize = 0;
+            devHeaderCard.Controls.Add(btnSaveFile);
 
             int cardW = (canvasWidth - 32) / 3;
             Panel infoCard1 = CreateCardPanel(new Rectangle(0, 106, cardW, 80), Color.FromArgb(246, 248, 252));
@@ -337,8 +353,6 @@ namespace DataMaskingSystem
             dgvDev.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dgvDev.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
             dgvDev.ScrollBars = ScrollBars.Both;
-
-            devTableCard.Controls.Add(dgvDev);
             devTableCard.Controls.Add(dgvDev);
 
             pnlCSKH.Controls.Add(profileCard);
@@ -350,8 +364,10 @@ namespace DataMaskingSystem
             pnlDEV.Controls.Add(infoCard3);
             pnlDEV.Controls.Add(devTableCard);
 
-            Panel consoleCard = CreateCardPanel(new Rectangle(16, 566, canvasWidth, 136), Color.FromArgb(6, 16, 35));
-            consoleCard.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            Panel consoleCard = CreateCardPanel(new Rectangle(0, 0, canvasWidth, 136), Color.FromArgb(6, 16, 35));
+            consoleCard.Dock = DockStyle.Bottom;
+            consoleCard.Visible = false;
+
             consoleCard.Controls.Add(new Label
             {
                 Text = "Public Channel Monitor",
@@ -375,7 +391,10 @@ namespace DataMaskingSystem
             };
             consoleCard.Controls.Add(txtConsole);
 
+            Panel spacer = new Panel { Dock = DockStyle.Bottom, Height = 16, BackColor = Color.Transparent, Visible = false };
+
             canvas.Controls.Add(consoleCard);
+            canvas.Controls.Add(spacer);
             canvas.Controls.Add(pnlCSKH);
             canvas.Controls.Add(pnlDEV);
 
@@ -391,6 +410,7 @@ namespace DataMaskingSystem
                 TxtSearchID = txtSearchID,
                 BtnSearch = btnSearch,
                 BtnExport = btnExport,
+                BtnSaveFile = btnSaveFile,
                 BtnLogout = btnLogout,
                 LblRole = lblRole,
                 TxtConsole = txtConsole,
@@ -468,22 +488,6 @@ namespace DataMaskingSystem
             return grid;
         }
 
-        private static void DrawLoginGradient(object sender, PaintEventArgs e)
-        {
-            Panel panel = sender as Panel;
-            if (panel == null) return;
-
-            Rectangle rect = new Rectangle(0, 0, panel.Width, panel.Height);
-            using (LinearGradientBrush brush = new LinearGradientBrush(rect, Color.FromArgb(20, 48, 86), Color.FromArgb(18, 101, 133), 10f))
-            {
-                e.Graphics.FillRectangle(brush, rect);
-            }
-            using (Pen borderPen = new Pen(Color.FromArgb(72, 214, 255)))
-            {
-                e.Graphics.DrawLine(borderPen, 0, panel.Height - 1, panel.Width, panel.Height - 1);
-            }
-        }
-
         private static void DrawCardBorder(object sender, PaintEventArgs e)
         {
             Control card = sender as Control;
@@ -492,17 +496,6 @@ namespace DataMaskingSystem
             using (Pen borderPen = new Pen(Color.FromArgb(66, 89, 118)))
             {
                 e.Graphics.DrawRectangle(borderPen, 0, 0, card.Width - 1, card.Height - 1);
-            }
-        }
-
-        private static void DrawTagBorder(object sender, PaintEventArgs e)
-        {
-            Control tag = sender as Control;
-            if (tag == null) return;
-
-            using (Pen borderPen = new Pen(Color.FromArgb(184, 212, 252)))
-            {
-                e.Graphics.DrawRectangle(borderPen, 0, 0, tag.Width - 1, tag.Height - 1);
             }
         }
     }

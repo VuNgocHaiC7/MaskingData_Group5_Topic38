@@ -7,12 +7,12 @@
       "RelativeMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|solutionrelative:mainformuimanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|E:\\MaskingDataC#\\DataMaskingSystem\\loginform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
-      "RelativeMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|solutionrelative:loginform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|e:\\maskingdatac#\\datamaskingsystem\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|E:\\MaskingDataC#\\DataMaskingSystem\\loginform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|solutionrelative:loginform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
     },
     {
       "AbsoluteMoniker": "D:0:0:{22A107A3-5E64-4EAE-947C-A3893169D077}|DataMaskingSystem.csproj|e:\\maskingdatac#\\datamaskingsystem\\datamaskingsystem.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|",
@@ -39,18 +39,17 @@
               "ViewState": "AgIAAAMAAAAAAAAAAAAAAAsAAAAKAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
               "WhenOpened": "2026-03-11T16:31:32.135Z",
-              "IsPinned": true,
-              "EditorCaption": ""
+              "IsPinned": true
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 1,
               "Title": "Program.cs",
               "DocumentMoniker": "E:\\MaskingDataC#\\DataMaskingSystem\\Program.cs",
               "RelativeDocumentMoniker": "Program.cs",
               "ToolTip": "E:\\MaskingDataC#\\DataMaskingSystem\\Program.cs",
               "RelativeToolTip": "Program.cs",
-              "ViewState": "AgIAAOgBAAAAAAAAAAAAwAACAAA0AAAAAAAAAA==",
+              "ViewState": "AgIAAHcAAAAAAAAAAAAAAIwAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-03-11T03:37:53.105Z",
               "IsPinned": true,
@@ -64,7 +63,7 @@
               "RelativeDocumentMoniker": "MainFormUiManager.cs",
               "ToolTip": "E:\\MaskingDataC#\\DataMaskingSystem\\MainFormUiManager.cs",
               "RelativeToolTip": "MainFormUiManager.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABQAAAAwAAAAAAAAAA==",
+              "ViewState": "AgIAACgBAAAAAAAAAAAiwEUBAAAoAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-03-14T08:50:10.088Z",
               "IsPinned": true,
@@ -104,15 +103,14 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "LoginForm.cs [Design]",
               "DocumentMoniker": "E:\\MaskingDataC#\\DataMaskingSystem\\LoginForm.cs",
               "RelativeDocumentMoniker": "LoginForm.cs",
               "ToolTip": "E:\\MaskingDataC#\\DataMaskingSystem\\LoginForm.cs [Design]",
               "RelativeToolTip": "LoginForm.cs [Design]",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-16T03:29:18.757Z",
-              "EditorCaption": " [Design]"
+              "WhenOpened": "2026-03-16T03:29:18.757Z"
             }
           ]
         }
