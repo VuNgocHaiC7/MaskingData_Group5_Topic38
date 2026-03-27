@@ -61,7 +61,7 @@ namespace DataMaskingSystem
 
         Panel pnlCSKH, pnlDEV;
         TextBox txtSearchID;
-        Button btnSearch, btnExport, btnLogout;
+        Button btnSearch, btnExport, btnLogout, btnSaveFile;
         Label lblRole;
         RichTextBox txtConsole;
         DataGridView dgvDev;
@@ -91,6 +91,8 @@ namespace DataMaskingSystem
             btnSearch = ui.BtnSearch;
             btnExport = ui.BtnExport;
             btnLogout = ui.BtnLogout;
+            btnSaveFile = ui.BtnSaveFile;
+            btnSaveFile.Click += BtnSaveFile_Click;
             lblRole = ui.LblRole;
             txtConsole = ui.TxtConsole;
             dgvDev = ui.DgvDev;
@@ -108,17 +110,32 @@ namespace DataMaskingSystem
 
             dgvCustomerDetails.CellFormatting += (s, e) =>
             {
-                if (e.RowIndex >= 0 && e.ColumnIndex == 0)
+                if (e.RowIndex >= 0 && (e.ColumnIndex == 0 || e.ColumnIndex == 2))
                 {
                     e.CellStyle.ForeColor = Color.FromArgb(108, 122, 137);
                     e.CellStyle.Font = new Font("Segoe UI", 10, FontStyle.Regular);
                 }
-                else if (e.RowIndex >= 0 && e.ColumnIndex == 1)
+                else if (e.RowIndex >= 0 && (e.ColumnIndex == 1 || e.ColumnIndex == 3))
                 {
                     e.CellStyle.ForeColor = Color.FromArgb(15, 23, 42);
                     e.CellStyle.Font = new Font("Segoe UI", 10, FontStyle.Bold);
                 }
             };
+
+            dgvCustomerDetails.CellToolTipTextNeeded += (s, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0)
+                {
+                    return;
+                }
+
+                object? value = dgvCustomerDetails.Rows[e.RowIndex].Cells[e.ColumnIndex].Value;
+                e.ToolTipText = value?.ToString() ?? string.Empty;
+            };
+
+            dgvCustomerDetails.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
+            dgvCustomerDetails.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
+            dgvCustomerDetails.ScrollBars = ScrollBars.Both;
 
             LogToConsole("Hệ thống UI đã sẵn sàng.");
         }
@@ -243,19 +260,59 @@ namespace DataMaskingSystem
 
         private void BindCustomerDetails(Dictionary<string, string?>? fields)
         {
-            DataTable dt = new DataTable();
-            dt.Columns.Add("Thuộc tính");
-            dt.Columns.Add("Giá trị");
+            // 1. Reset sạch bảng để không dính cấu hình cũ
+            dgvCustomerDetails.DataSource = null;
+            dgvCustomerDetails.Columns.Clear();
 
+            // 2. KHỞI TẠO ĐÚNG 4 CỘT (Bạn check kỹ xem có đủ 4 dòng này không nhé!)
+            DataTable dt = new DataTable();
+            dt.Columns.Add("Hạng Mục");
+            dt.Columns.Add("Chi tiết");
+            dt.Columns.Add("Hạng Mục (Tiếp)");
+            dt.Columns.Add("Chi tiết (Tiếp)");
+
+            // 3. Thuật toán cắt đôi danh sách để xếp vào 4 cột
             if (fields != null)
             {
-                foreach (KeyValuePair<string, string?> item in fields.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+                var kvpList = fields.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
+                int midPoint = (int)Math.Ceiling(kvpList.Count / 2.0);
+
+                for (int i = 0; i < midPoint; i++)
                 {
-                    dt.Rows.Add(item.Key, item.Value ?? string.Empty);
+                    string key1 = kvpList[i].Key;
+                    string val1 = kvpList[i].Value ?? string.Empty;
+
+                    string key2 = "";
+                    string val2 = "";
+                    if (i + midPoint < kvpList.Count)
+                    {
+                        key2 = kvpList[i + midPoint].Key;
+                        val2 = kvpList[i + midPoint].Value ?? string.Empty;
+                    }
+
+                    dt.Rows.Add(key1, val1, key2, val2);
                 }
             }
 
             dgvCustomerDetails.DataSource = dt;
+
+            // 4. Căn chỉnh cột cho vừa vặn với nội dung
+            if (dgvCustomerDetails.Columns.Count >= 4)
+            {
+                dgvCustomerDetails.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+
+                for (int i = 0; i < 4; i++)
+                {
+                    dgvCustomerDetails.Columns[i].AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+                    // Khóa chặt MinimumWidth = 10 để các cột không bị phình to
+                    dgvCustomerDetails.Columns[i].MinimumWidth = 10;
+                }
+
+                dgvCustomerDetails.Columns[0].FillWeight = 18; // Hạng Mục 1
+                dgvCustomerDetails.Columns[1].FillWeight = 32; // Chi Tiết 1
+                dgvCustomerDetails.Columns[2].FillWeight = 18; // Hạng Mục 2
+                dgvCustomerDetails.Columns[3].FillWeight = 32; // Chi Tiết 2
+            }
         }
 
         private void UpdatePortraitImage(string? portraitImage)
@@ -477,6 +534,47 @@ namespace DataMaskingSystem
 
             ShouldLogout = true;
             Close();
+        }
+
+        private void BtnSaveFile_Click(object? sender, EventArgs e)
+        {
+            if (dgvDev.Rows.Count == 0)
+            {
+                MessageBox.Show("Chưa có dữ liệu! Vui lòng bấm 'Tải Dữ liệu' trước.", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using SaveFileDialog sfd = new SaveFileDialog
+            {
+                Filter = "CSV File (*.csv)|*.csv",
+                FileName = "Dev_Test_MaskedData.csv",
+                Title = "Lưu dữ liệu mẫu cho DEV"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var sb = new System.Text.StringBuilder();
+                    var headers = dgvDev.Columns.Cast<DataGridViewColumn>().Select(c => "\"" + c.HeaderText + "\"");
+                    sb.AppendLine(string.Join(",", headers));
+
+                    // 2. Vét sạch dữ liệu từng dòng trong bảng
+                    foreach (DataGridViewRow row in dgvDev.Rows)
+                    {
+                        var cells = row.Cells.Cast<DataGridViewCell>().Select(c => "\"" + (c.Value?.ToString() ?? "").Replace("\"", "\"\"") + "\"");
+                        sb.AppendLine(string.Join(",", cells));
+                    }
+                    File.WriteAllText(sfd.FileName, sb.ToString(), System.Text.Encoding.UTF8);
+
+                    LogToConsole($"Đã xuất file thành công tại: {sfd.FileName}");
+                    MessageBox.Show("Đã xuất file CSV thành công! Dev có thể dùng file này để test.", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Lỗi khi lưu file: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
         }
 
         private string ExtractAndRemove(Dictionary<string, string?> dict, string partialKey)
