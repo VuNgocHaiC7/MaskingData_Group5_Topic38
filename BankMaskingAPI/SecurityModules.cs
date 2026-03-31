@@ -15,6 +15,8 @@ namespace BankMaskingAPI
         public string? ChannelLogMessage { get; set; }
 
         public string? PortraitImage { get; set; }
+        public string MaskedCard { get; set; } = "**** **** **** ****";
+        public string CurrentBalance { get; set; } = "0 VNĐ";
         public Dictionary<string, string?> DbFields { get; set; } = new();
     }
 
@@ -33,122 +35,555 @@ namespace BankMaskingAPI
         public string? ConsoleMessage { get; set; }
     }
 
+    public sealed class LoginResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string Token { get; set; } = "";
+        public DateTime? ExpiresAtUtc { get; set; }
+    }
+
+    public sealed class CustomerManageDto
+    {
+        public long CustomerId { get; set; }
+        public string MaKhachHang { get; set; } = "";
+        public string MaskedName { get; set; } = "";
+        public string MaskedPhone { get; set; } = "";
+        public string MaskedEmail { get; set; } = "";
+        public string MaskedCccd { get; set; } = "";
+        public int RoleId { get; set; }
+    }
+
+    public sealed class CustomerManageListResponse
+    {
+        public List<CustomerManageDto> Rows { get; set; } = new();
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int Total { get; set; }
+    }
+
+
+    // TODO: create (but FrontEnd don't call)
+    public sealed class CustomerManageUpsertRequest
+    {
+        public string MaKhachHang { get; set; } = "";
+        public string HoTen { get; set; } = "";
+        public string SoDienThoai { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string SoCCCD { get; set; } = "";
+        public string SoTaiKhoan { get; set; } = "";
+        public string SoThe { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        public int RoleId { get; set; } = 1;
+    }
+
+    // TODO: update respone (but FrontEnd don't call)
+    public sealed class OperationResponse
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = "";
+    }
+
     public sealed class SecurityModules
     {
         private readonly string _connectionString;
+        private readonly string _dataEncryptionSecret;
+        private readonly string _searchIndexSecret;
+        private readonly string? _configurationError;
 
         public SecurityModules(IConfiguration configuration)
         {
-            _connectionString = configuration.GetConnectionString("BankDatabase")
-                ?? throw new InvalidOperationException("Connection string 'BankDatabase' is not configured.");
+            string host = configuration["DbSettings:Host"] ?? "127.0.0.1";
+            string port = configuration["DbSettings:Port"] ?? "3306";
+            string database = configuration["DbSettings:Database"] ?? "BankSystemMasking";
+            string userEnv = configuration["DbSettings:UserEnv"] ?? "MASK_DB_USER";
+            string passwordEnv = configuration["DbSettings:PasswordEnv"] ?? "MASK_DB_PASSWORD";
+            string dataKeyEnv = configuration["DbSettings:DataKeyEnv"] ?? "MASK_DATA_KEY";
+            string searchIndexKeyEnv = configuration["DbSettings:SearchIndexKeyEnv"] ?? "MASK_SEARCH_INDEX_KEY";
+            string sslMode = configuration["DbSettings:SslMode"] ?? "Preferred";
+            string allowPublicKeyRetrieval = configuration["DbSettings:AllowPublicKeyRetrieval"] ?? "true";
+
+            string? dbUser = Environment.GetEnvironmentVariable(userEnv);
+            string? dbPassword = Environment.GetEnvironmentVariable(passwordEnv);
+
+            if (string.IsNullOrWhiteSpace(dbUser))
+            {
+                dbUser = configuration["DbSettings:User"];
+            }
+
+            if (string.IsNullOrWhiteSpace(dbPassword))
+            {
+                dbPassword = configuration["DbSettings:Password"];
+            }
+
+            _dataEncryptionSecret = Environment.GetEnvironmentVariable(dataKeyEnv) ?? "MASKING_DEMO_KEY_CHANGE_ME";
+            _searchIndexSecret = Environment.GetEnvironmentVariable(searchIndexKeyEnv) ?? (_dataEncryptionSecret + "_IDX");
+
+            if (string.IsNullOrWhiteSpace(dbUser) || string.IsNullOrWhiteSpace(dbPassword))
+            {
+                _configurationError =
+                    $"Missing database credentials. Set env vars '{userEnv}'/'{passwordEnv}' or DbSettings:User/DbSettings:Password.";
+                _connectionString = string.Empty;
+                return;
+            }
+
+            _connectionString =
+                $"Server={host};Port={port};Database={database};Uid={dbUser};Pwd={dbPassword};" +
+                $"SslMode={sslMode};AllowPublicKeyRetrieval={allowPublicKeyRetrieval};";
+        }
+
+        // 
+        public void EnsureSensitiveDataEncryptedAtRest()
+        {
+            EnsureDatabaseConfigured();
+
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            var updates = new List<(long Id, string Phone, string Email, string Cccd, string Account, string Card, string PhoneIdx, string CccdIdx, string AccountIdx, string CardIdx)>();
+
+            const string scanSql = @"SELECT CustomerID, SoDienThoai, Email, SoCCCD, SoTaiKhoan, SoThe,
+                                            SoDienThoaiIdx, SoCCCDIdx, SoTaiKhoanIdx, SoTheIdx
+                                     FROM Customers";
+            using (var cmd = new MySqlCommand(scanSql, conn))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    long id = reader["CustomerID"] == DBNull.Value ? 0L : Convert.ToInt64(reader["CustomerID"]);
+                    if (id <= 0)
+                    {
+                        continue;
+                    }
+
+                    bool changed = false;
+
+                    string phone = NormalizeEncryptedField(reader["SoDienThoai"]?.ToString(), SensitiveFieldKind.Phone, ref changed);
+                    string email = NormalizeEncryptedField(reader["Email"]?.ToString(), SensitiveFieldKind.Email, ref changed);
+                    string cccd = NormalizeEncryptedField(reader["SoCCCD"]?.ToString(), SensitiveFieldKind.Cccd, ref changed);
+                    string account = NormalizeEncryptedField(reader["SoTaiKhoan"]?.ToString(), SensitiveFieldKind.Account, ref changed);
+                    string card = NormalizeEncryptedField(reader["SoThe"]?.ToString(), SensitiveFieldKind.Card, ref changed);
+
+                    string phoneIdx = ComputeSearchIndex(DecryptIfNeeded(phone));
+                    string cccdIdx = ComputeSearchIndex(DecryptIfNeeded(cccd));
+                    string accountIdx = ComputeSearchIndex(DecryptIfNeeded(account));
+                    string cardIdx = ComputeSearchIndex(DecryptIfNeeded(card));
+
+                    string currentPhoneIdx = reader["SoDienThoaiIdx"]?.ToString() ?? string.Empty;
+                    string currentCccdIdx = reader["SoCCCDIdx"]?.ToString() ?? string.Empty;
+                    string currentAccountIdx = reader["SoTaiKhoanIdx"]?.ToString() ?? string.Empty;
+                    string currentCardIdx = reader["SoTheIdx"]?.ToString() ?? string.Empty;
+
+                    changed = changed
+                        || !string.Equals(phoneIdx, currentPhoneIdx, StringComparison.Ordinal)
+                        || !string.Equals(cccdIdx, currentCccdIdx, StringComparison.Ordinal)
+                        || !string.Equals(accountIdx, currentAccountIdx, StringComparison.Ordinal)
+                        || !string.Equals(cardIdx, currentCardIdx, StringComparison.Ordinal);
+
+                    if (changed)
+                    {
+                        updates.Add((id, phone, email, cccd, account, card, phoneIdx, cccdIdx, accountIdx, cardIdx));
+                    }
+                }
+            }
+
+            if (updates.Count == 0)
+            {
+                return;
+            }
+
+            const string updateSql = @"UPDATE Customers
+                                       SET SoDienThoai = @phone,
+                                           Email = @email,
+                                           SoCCCD = @cccd,
+                                           SoTaiKhoan = @account,
+                                           SoThe = @card,
+                                           SoDienThoaiIdx = @phoneIdx,
+                                           SoCCCDIdx = @cccdIdx,
+                                           SoTaiKhoanIdx = @accountIdx,
+                                           SoTheIdx = @cardIdx
+                                       WHERE CustomerID = @id";
+
+            foreach (var item in updates)
+            {
+                using var updateCmd = new MySqlCommand(updateSql, conn);
+                updateCmd.Parameters.AddWithValue("@phone", string.IsNullOrWhiteSpace(item.Phone) ? DBNull.Value : item.Phone);
+                updateCmd.Parameters.AddWithValue("@email", string.IsNullOrWhiteSpace(item.Email) ? DBNull.Value : item.Email);
+                updateCmd.Parameters.AddWithValue("@cccd", string.IsNullOrWhiteSpace(item.Cccd) ? DBNull.Value : item.Cccd);
+                updateCmd.Parameters.AddWithValue("@account", string.IsNullOrWhiteSpace(item.Account) ? DBNull.Value : item.Account);
+                updateCmd.Parameters.AddWithValue("@card", string.IsNullOrWhiteSpace(item.Card) ? DBNull.Value : item.Card);
+                updateCmd.Parameters.AddWithValue("@phoneIdx", string.IsNullOrWhiteSpace(item.PhoneIdx) ? DBNull.Value : item.PhoneIdx);
+                updateCmd.Parameters.AddWithValue("@cccdIdx", string.IsNullOrWhiteSpace(item.CccdIdx) ? DBNull.Value : item.CccdIdx);
+                updateCmd.Parameters.AddWithValue("@accountIdx", string.IsNullOrWhiteSpace(item.AccountIdx) ? DBNull.Value : item.AccountIdx);
+                updateCmd.Parameters.AddWithValue("@cardIdx", string.IsNullOrWhiteSpace(item.CardIdx) ? DBNull.Value : item.CardIdx);
+                updateCmd.Parameters.AddWithValue("@id", item.Id);
+                updateCmd.ExecuteNonQuery();
+            }
         }
 
         public CskhSearchResponse SearchCustomerCskh(int searchType, string keyword)
         {
+            //Check if you have sufficient database connection information
+            EnsureDatabaseConfigured();
+
             var response = new CskhSearchResponse();
             response.DbFields = new Dictionary<string, string?>();
 
             using var conn = new MySqlConnection(_connectionString);
             conn.Open();
 
-            string whereClause = searchType switch
+            char[] name = Array.Empty<char>();
+            char[] phone = Array.Empty<char>();
+            char[] acc = Array.Empty<char>();
+            char[] cccd = Array.Empty<char>();
+            char[] email = Array.Empty<char>();
+            char[] maskedName = Array.Empty<char>();
+            char[] maskedPhone = Array.Empty<char>();
+            char[] maskedAcc = Array.Empty<char>();
+            char[] maskedCccd = Array.Empty<char>();
+            char[] maskedEmail = Array.Empty<char>();
+            char[] channelSessionKey = Array.Empty<char>();
+            char[] unwrappedSessionKey = Array.Empty<char>();
+            char[] encPhone = Array.Empty<char>();
+            char[] encAcc = Array.Empty<char>();
+            char[] cardPlain = Array.Empty<char>();
+            char[] maskedCard = Array.Empty<char>();
+
+            try
             {
-                0 => "SoDienThoai = @keyword",
-                1 => "SoCCCD = @keyword",
-                2 => "(SoTaiKhoan = @keyword OR SoThe = @keyword)",
-                _ => "CustomerID = @keyword" 
-            };
 
-            string query = $"SELECT * FROM Customers WHERE {whereClause} LIMIT 1";
+                string normalizedKeyword = (keyword ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(normalizedKeyword))
+                {
+                    response.Found = false;
+                    response.DisplayText = "Không tìm thấy khách hàng!";
+                    return response;
+                }
 
-            using var cmd = new MySqlCommand(query, conn);
-            cmd.Parameters.AddWithValue("@keyword", keyword.Trim());
-            using var reader = cmd.ExecuteReader();
+                string normalizedLookupValue = NormalizeSearchKeyword(normalizedKeyword);
+                long customerId = TryFindCustomerIdBySearchIndex(conn, searchType, normalizedLookupValue);
+                if (customerId <= 0)
+                {
+                    string encryptedKeyword = EncryptForStorage(normalizedKeyword);
+                    customerId = TryFindCustomerIdByDirectMatch(conn, searchType, normalizedKeyword, encryptedKeyword);
+                    if (customerId <= 0)
+                    {
+                        customerId = TryFindCustomerIdByDecryptedScan(conn, searchType, normalizedKeyword);
+                    }
+                }
 
-            if (!reader.Read())
-            {
-                response.Found = false;
-                response.DisplayText = "Không tìm thấy khách hàng!";
+                if (customerId <= 0)
+                {
+                    response.Found = false;
+                    response.DisplayText = "Không tìm thấy khách hàng!";
+                    return response;
+                }
+
+                const string selectedColumns = @"SELECT CustomerID, HinhAnhChanDung, HoTen, NgaySinh, GioiTinh, SoCCCD,
+                                       MaKhachHang, QuocTich, SoDienThoai, Email, DiaChiNha,
+                                       SoTaiKhoan, SoThe, SoDu, DuNoHienTai, LoaiTaiKhoan, TrangThaiThe, TenDangNhap
+                                             FROM Customers";
+
+                using var loadCmd = new MySqlCommand(selectedColumns + " WHERE CustomerID = @id LIMIT 1", conn);
+                loadCmd.Parameters.AddWithValue("@id", customerId);
+                using var reader = loadCmd.ExecuteReader();
+                if (!reader.Read())
+                {
+                    response.Found = false;
+                    response.DisplayText = "Không tìm thấy khách hàng!";
+                    return response;
+                }
+
+                string hinhAnh = reader["HinhAnhChanDung"]?.ToString() ?? string.Empty;
+                response.PortraitImage = hinhAnh;
+
+                string hoTenRaw = reader["HoTen"]?.ToString() ?? string.Empty;
+                string soDienThoaiRaw = DecryptIfNeeded(reader["SoDienThoai"]?.ToString());
+                string soCccdRaw = DecryptIfNeeded(reader["SoCCCD"]?.ToString());
+                string soTaiKhoanRaw = DecryptIfNeeded(reader["SoTaiKhoan"]?.ToString());
+                string emailRaw = DecryptIfNeeded(reader["Email"]?.ToString());
+
+                name = CustomStringHelper.ToCharArray(hoTenRaw);
+                phone = CustomStringHelper.ToCharArray(soDienThoaiRaw);
+                acc = CustomStringHelper.ToCharArray(soTaiKhoanRaw);
+                cccd = CustomStringHelper.ToCharArray(soCccdRaw);
+                email = CustomStringHelper.ToCharArray(emailRaw);
+
+                maskedName = CustomDataMasker.MaskFullName(name);
+                maskedPhone = CustomDataMasker.MaskPhoneNumber(phone);
+                maskedAcc = CustomDataMasker.MaskBankAccount(acc);
+                maskedCccd = CustomDataMasker.MaskBankAccount(cccd);
+                maskedEmail = CustomDataMasker.MaskEmail(email);
+
+                // 1. Initialize a 32-byte random session key for AES
+                channelSessionKey = CustomRSA.GenerateRandomSessionKey(32);
+
+                // 2. Wrap the session key using the RSA algorithm (Key encryption)
+                BigInteger rsaWrappedKey = CustomRSA.EncryptAESKey(channelSessionKey);
+
+                // (Simulation of the key de-encapsulation process at the receiving end)
+                unwrappedSessionKey = CustomRSA.DecryptAESKey(rsaWrappedKey);
+
+                // 3. Encrypt the actual data (payload) using AES-256 with the session key just decrypted.
+                encPhone = CustomAES.EncryptData(maskedPhone, unwrappedSessionKey);
+                encAcc = CustomAES.EncryptData(maskedAcc, unwrappedSessionKey);
+
+                response.ChannelLogMessage = $"[KÊNH TRUYỀN] RSA bọc khóa phiên AES. Dữ liệu truyền đã mã hóa.\nSĐT: {new string(encPhone)} | STK: {new string(encAcc)}";
+
+                string gioiTinh = (reader["GioiTinh"]?.ToString() ?? "") switch { "0" => "Nam", "1" => "Nữ", _ => "Không rõ" };
+                string loaiTaiKhoan = (reader["LoaiTaiKhoan"]?.ToString() ?? "") switch { "1" => "Thường", "2" => "VIP", "3" => "Premium", _ => "Không rõ" };
+                string trangThaiThe = (reader["TrangThaiThe"]?.ToString() ?? "") switch { "0" => "Khoá", "1" => "Hoạt động", "2" => "Hết hạn", _ => "Không rõ" };
+
+                response.DbFields.Add("ID Hệ Thống", reader["CustomerID"]?.ToString() ?? "");
+                response.DbFields.Add("Mã KH", reader["MaKhachHang"]?.ToString() ?? "");
+                response.DbFields.Add("Họ tên (Mask)", new string(maskedName));
+                response.DbFields.Add("Ngày sinh", reader["NgaySinh"] == DBNull.Value ? "" : Convert.ToDateTime(reader["NgaySinh"]).ToString("dd/MM/yyyy"));
+                response.DbFields.Add("Giới tính", gioiTinh);
+                response.DbFields.Add("CCCD (Mask)", new string(maskedCccd));
+                response.DbFields.Add("Quốc tịch", reader["QuocTich"]?.ToString() ?? "");
+
+                response.DbFields.Add("SĐT (Mask)", new string(maskedPhone));
+                response.DbFields.Add("Email (Mask)", new string(maskedEmail));
+                response.DbFields.Add("Địa chỉ nhà", reader["DiaChiNha"]?.ToString() ?? "");
+
+                response.DbFields.Add("Tài khoản chính (Mask)", new string(maskedAcc));
+                response.DbFields.Add("Dư nợ hiện tại", $"{reader["DuNoHienTai"]} VNĐ");
+                response.DbFields.Add("Loại tài khoản", loaiTaiKhoan);
+
+                response.DbFields.Add("Trạng thái thẻ", trangThaiThe);
+                response.DbFields.Add("Tên đăng nhập", reader["TenDangNhap"]?.ToString() ?? "");
+
+                if (reader["SoThe"] == DBNull.Value)
+                {
+                    response.MaskedCard = "**** **** **** ****";
+                }
+                else
+                {
+                    cardPlain = CustomStringHelper.ToCharArray(DecryptIfNeeded(reader["SoThe"]?.ToString()));
+                    maskedCard = CustomDataMasker.MaskBankAccount(cardPlain);
+                    response.MaskedCard = new string(maskedCard);
+                }
+
+                response.CurrentBalance = $"{reader["SoDu"]} VNĐ";
+
+                var resultBuilder = new StringBuilder();
+                resultBuilder.AppendLine($"Đã tìm thấy khách hàng: {new string(maskedName)}");
+                resultBuilder.AppendLine("Trạng thái dữ liệu: [Đã áp dụng Masking & Encryption]");
+                resultBuilder.AppendLine("Tất cả dữ liệu chi tiết đã được đẩy xuống bảng thuộc tính bên dưới.");
+
+                response.Found = true;
+                response.DisplayText = resultBuilder.ToString();
+
                 return response;
             }
+            finally
+            {
+                WipeCharArrays(name, phone, acc, cccd, email,
+                    maskedName, maskedPhone, maskedAcc, maskedCccd, maskedEmail,
+                    channelSessionKey, unwrappedSessionKey, encPhone, encAcc,
+                    cardPlain, maskedCard);
+            }
+        }
 
-            string hinhAnh = reader["HinhAnhChanDung"]?.ToString() ?? string.Empty;
-            response.PortraitImage = hinhAnh;
+        private long TryFindCustomerIdBySearchIndex(MySqlConnection conn, int searchType, string normalizedKeyword)
+        {
+            if (searchType < 0 || searchType > 2)
+            {
+                return 0;
+            }
 
-            string hoTenRaw = reader["HoTen"]?.ToString() ?? string.Empty;
-            string soDienThoaiRaw = reader["SoDienThoai"]?.ToString() ?? string.Empty;
-            string soTaiKhoanRaw = reader["SoTaiKhoan"]?.ToString() ?? string.Empty;
-            string soCccdRaw = reader["SoCCCD"]?.ToString() ?? string.Empty;
-            string emailRaw = reader["Email"]?.ToString() ?? string.Empty;
-            string soTheRaw = reader["SoThe"]?.ToString() ?? string.Empty;
+            string keywordIdx = ComputeSearchIndex(normalizedKeyword);
+            if (string.IsNullOrWhiteSpace(keywordIdx))
+            {
+                return 0;
+            }
 
-            char[] name = CustomStringHelper.ToCharArray(hoTenRaw);
-            char[] phone = CustomStringHelper.ToCharArray(soDienThoaiRaw);
-            char[] acc = CustomStringHelper.ToCharArray(soTaiKhoanRaw);
-            char[] cccd = CustomStringHelper.ToCharArray(soCccdRaw);
-            char[] email = CustomStringHelper.ToCharArray(emailRaw);
-            char[] card = CustomStringHelper.ToCharArray(soTheRaw);
+            string sql = searchType switch
+            {
+                0 => "SELECT CustomerID FROM Customers WHERE SoDienThoaiIdx = @idx LIMIT 1",
+                1 => "SELECT CustomerID FROM Customers WHERE SoCCCDIdx = @idx LIMIT 1",
+                2 => "SELECT CustomerID FROM Customers WHERE SoTaiKhoanIdx = @idx OR SoTheIdx = @idx LIMIT 1",
+                _ => "SELECT 0"
+            };
 
-            char[] maskedName = CustomDataMasker.MaskFullName(name);
-            char[] maskedPhone = CustomDataMasker.MaskPhoneNumber(phone);
-            char[] maskedAcc = CustomDataMasker.MaskBankAccount(acc);
-            char[] maskedCccd = CustomDataMasker.MaskBankAccount(cccd);
-            char[] maskedEmail = CustomDataMasker.MaskEmail(email);
-            char[] maskedCard = CustomDataMasker.MaskBankAccount(card);
+            try
+            {
+                using var cmd = new MySqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@idx", keywordIdx);
+                object? value = cmd.ExecuteScalar();
+                if (value == null || value == DBNull.Value)
+                {
+                    return 0;
+                }
 
-            char[] key = CustomStringHelper.ToCharArray("KEY123");
-            char[] encPhone = CustomCryptography.XorEncryptDecrypt(maskedPhone, key);
-            char[] encAcc = CustomCryptography.XorEncryptDecrypt(maskedAcc, key);
+                return Convert.ToInt64(value);
+            }
+            catch (MySqlException ex) when (ex.Number == 1054)
+            {
+                // Unknown column: database chưa chạy migration index.
+                return 0;
+            }
+        }
 
-            response.ChannelLogMessage = $"[KÊNH TRUYỀN] Bắt được gói tin mã hóa XOR:\nSĐT: {new string(encPhone)} | STK: {new string(encAcc)}";
+        private long TryFindCustomerIdByDirectMatch(MySqlConnection conn, int searchType, string plainKeyword, string encryptedKeyword)
+        {
+            using var cmd = BuildCustomerSearchCommand(conn, searchType, plainKeyword, encryptedKeyword);
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read())
+            {
+                return 0;
+            }
 
-            char[] decPhone = CustomCryptography.XorEncryptDecrypt(encPhone, key);
-            char[] decAcc = CustomCryptography.XorEncryptDecrypt(encAcc, key);
+            return reader["CustomerID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["CustomerID"]);
+        }
 
-            string gioiTinh = (reader["GioiTinh"]?.ToString() ?? "") switch { "0" => "Nam", "1" => "Nữ", _ => "Không rõ" };
-            string loaiTaiKhoan = (reader["LoaiTaiKhoan"]?.ToString() ?? "") switch { "1" => "Thường", "2" => "VIP", "3" => "Premium", _ => "Không rõ" };
-            string trangThaiThe = (reader["TrangThaiThe"]?.ToString() ?? "") switch { "0" => "Khoá", "1" => "Hoạt động", "2" => "Hết hạn", _ => "Không rõ" };
-            string roleID = (reader["RoleID"]?.ToString() ?? "") switch { "1" => "Khách hàng", "2" => "CSKH", "3" => "Admin", _ => "Không rõ" };
-            string trangThaiGD = (reader["TrangThaiGD"]?.ToString() ?? "") switch { "0" => "Lỗi", "1" => "Thành công", "2" => "Đang chờ", _ => "Không rõ" };
+        private long TryFindCustomerIdByDecryptedScan(MySqlConnection conn, int searchType, string keyword)
+        {
+            if (searchType < 0 || searchType > 2)
+            {
+                return 0;
+            }
 
-            response.DbFields.Add("ID Hệ Thống", reader["CustomerID"]?.ToString());
-            response.DbFields.Add("Mã KH", reader["MaKhachHang"]?.ToString());
-            response.DbFields.Add("Họ tên (Mask)", new string(maskedName));
-            string ngaySinhFormatted = reader["NgaySinh"] != DBNull.Value
-    ? Convert.ToDateTime(reader["NgaySinh"]).ToString("dd/MM/yyyy")
-    : "";
-            response.DbFields.Add("Ngày sinh", ngaySinhFormatted);
-            response.DbFields.Add("Giới tính", gioiTinh);
-            response.DbFields.Add("CCCD (Mask)", new string(maskedCccd));
-            response.DbFields.Add("Quốc tịch", reader["QuocTich"]?.ToString());
+            const string sql = @"SELECT CustomerID, SoDienThoai, SoCCCD, SoTaiKhoan, SoThe FROM Customers";
+            using var cmd = new MySqlCommand(sql, conn);
+            using var reader = cmd.ExecuteReader();
 
-            response.DbFields.Add("SĐT (Decrypted)", new string(decPhone));
-            response.DbFields.Add("Email (Mask)", new string(maskedEmail));
-            response.DbFields.Add("Địa chỉ nhà", reader["DiaChiNha"]?.ToString());
+            string normalizedKeyword = NormalizeSearchKeyword(keyword);
+            while (reader.Read())
+            {
+                bool matched = searchType switch
+                {
+                    0 => IsSearchMatch(reader["SoDienThoai"]?.ToString(), normalizedKeyword),
+                    1 => IsSearchMatch(reader["SoCCCD"]?.ToString(), normalizedKeyword),
+                    2 => IsSearchMatch(reader["SoTaiKhoan"]?.ToString(), normalizedKeyword)
+                        || IsSearchMatch(reader["SoThe"]?.ToString(), normalizedKeyword),
+                    _ => false
+                };
 
-            response.DbFields.Add("Tài khoản chính", new string(decAcc));
-            response.DbFields.Add("Số dư hiện tại", $"{reader["SoDu"]} VNĐ");
-            response.DbFields.Add("Dư nợ hiện tại", $"{reader["DuNoHienTai"]} VNĐ");
-            response.DbFields.Add("Loaị tài khoản", loaiTaiKhoan);
+                if (!matched)
+                {
+                    continue;
+                }
 
-            response.DbFields.Add("Số thẻ (Mask)", new string(maskedCard));
-            response.DbFields.Add("Trạng thái thẻ", trangThaiThe);
-            response.DbFields.Add("Tên đăng nhập", reader["TenDangNhap"]?.ToString());
-            response.DbFields.Add("Mật khẩu/PIN", "[ĐÃ MÃ HÓA HASH]");
+                return reader["CustomerID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["CustomerID"]);
+            }
 
-            var resultBuilder = new StringBuilder();
-            resultBuilder.AppendLine($"Đã tìm thấy khách hàng: {new string(maskedName)}");
-            resultBuilder.AppendLine("Trạng thái dữ liệu: [Đã áp dụng Masking & Encryption]");
-            resultBuilder.AppendLine("Tất cả dữ liệu chi tiết đã được đẩy xuống bảng thuộc tính bên dưới.");
+            return 0;
+        }
 
-            response.Found = true;
-            response.DisplayText = resultBuilder.ToString();
+        private bool IsSearchMatch(string? dbValue, string normalizedKeyword)
+        {
+            string plainValue = DecryptIfNeeded(dbValue);
+            return string.Equals(NormalizeSearchKeyword(plainValue), normalizedKeyword, StringComparison.OrdinalIgnoreCase);
+        }
 
-            return response;
+        private static void WipeCharArrays(params char[][] buffers)
+        {
+            if (buffers == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < buffers.Length; i++)
+            {
+                char[]? buffer = buffers[i];
+                if (buffer == null || buffer.Length == 0)
+                {
+                    continue;
+                }
+
+                Array.Clear(buffer, 0, buffer.Length);
+            }
+        }
+
+        private static string NormalizeSearchKeyword(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Trim()
+                .Replace(" ", string.Empty)
+                .Replace("-", string.Empty)
+                .Replace(".", string.Empty)
+                .ToLowerInvariant();
+        }
+
+        private string ComputeSearchIndex(string? plainValue)
+        {
+            string normalized = NormalizeSearchKeyword(plainValue);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return string.Empty;
+            }
+
+            byte[] keyBytes = Encoding.UTF8.GetBytes(_searchIndexSecret);
+            byte[] payload = Encoding.UTF8.GetBytes(normalized);
+            using var hmac = new HMACSHA256(keyBytes);
+            byte[] digest = hmac.ComputeHash(payload);
+
+            var builder = new StringBuilder(digest.Length * 2);
+            for (int i = 0; i < digest.Length; i++)
+            {
+                builder.Append(digest[i].ToString("X2"));
+            }
+
+            return builder.ToString();
+        }
+
+        private static MySqlCommand BuildCustomerSearchCommand(MySqlConnection conn, int searchType, string plainKeyword, string encryptedKeyword)
+        {
+                 const string selectedColumns = @"SELECT CustomerID, HinhAnhChanDung, HoTen, NgaySinh, GioiTinh, SoCCCD,
+                                       MaKhachHang, QuocTich, SoDienThoai, Email, DiaChiNha,
+                                       SoTaiKhoan, SoThe, SoDu, DuNoHienTai, LoaiTaiKhoan, TrangThaiThe, TenDangNhap
+                                             FROM Customers";
+
+            var cmd = new MySqlCommand { Connection = conn };
+
+            switch (searchType)
+            {
+                case 0:
+                    cmd.CommandText = selectedColumns + " WHERE SoDienThoai = @plain OR SoDienThoai = @enc LIMIT 1";
+                    cmd.Parameters.AddWithValue("@plain", plainKeyword);
+                    cmd.Parameters.AddWithValue("@enc", encryptedKeyword);
+                    break;
+
+                case 1:
+                    cmd.CommandText = selectedColumns + " WHERE SoCCCD = @plain OR SoCCCD = @enc LIMIT 1";
+                    cmd.Parameters.AddWithValue("@plain", plainKeyword);
+                    cmd.Parameters.AddWithValue("@enc", encryptedKeyword);
+                    break;
+
+                case 2:
+                    cmd.CommandText = selectedColumns + " WHERE SoTaiKhoan = @plain OR SoTaiKhoan = @enc OR SoThe = @plain OR SoThe = @enc LIMIT 1";
+                    cmd.Parameters.AddWithValue("@plain", plainKeyword);
+                    cmd.Parameters.AddWithValue("@enc", encryptedKeyword);
+                    break;
+
+                default:
+                    if (long.TryParse(plainKeyword, out long idValue))
+                    {
+                        cmd.CommandText = selectedColumns + " WHERE CustomerID = @id LIMIT 1";
+                        cmd.Parameters.AddWithValue("@id", idValue);
+                    }
+                    else
+                    {
+                        cmd.CommandText = selectedColumns + " WHERE 1 = 0";
+                    }
+
+                    break;
+            }
+
+            return cmd;
         }
 
         public DevExportResponse ExportDevSample()
         {
+            EnsureDatabaseConfigured();
+
             var result = new DevExportResponse();
             using var conn = new MySqlConnection(_connectionString);
             conn.Open();
@@ -164,10 +599,12 @@ namespace BankMaskingAPI
                 char[] name = CustomStringHelper.ToCharArray(reader["HoTen"]?.ToString() ?? "");
                 char[] maskedName = CustomDataMasker.MaskFullName(name);
 
-                char[] email = CustomStringHelper.ToCharArray(reader["Email"]?.ToString() ?? "");
+                string plainEmail = DecryptIfNeeded(reader["Email"]?.ToString());
+                char[] email = CustomStringHelper.ToCharArray(plainEmail);
                 char[] maskedEmail = CustomDataMasker.MaskEmail(email);
 
-                char[] cccd = CustomStringHelper.ToCharArray(reader["SoCCCD"]?.ToString() ?? "");
+                string plainCccd = DecryptIfNeeded(reader["SoCCCD"]?.ToString());
+                char[] cccd = CustomStringHelper.ToCharArray(plainCccd);
                 char[] cipherCccd = CustomAES.EncryptData(cccd, decryptedAesKey);
 
                 result.Rows.Add(new DevExportRowDto
@@ -180,10 +617,505 @@ namespace BankMaskingAPI
                 });
             }
 
-            result.ConsoleMessage = "[RSA] Đã tạo và trao đổi khóa phiên AES 256-bit an toàn.\n[DEV] Áp dụng Masking tĩnh (Họ tên, Email) và Mã hóa AES (CCCD).\n[DEV] Trích xuất tập dữ liệu mẫu thành công cho môi trường TEST.";
+            result.ConsoleMessage = "[RSA] Đã tạo và trao đổi khóa phiên AES 256-bit.\n[DEV] Áp dụng Masking tĩnh (Họ tên, Email) và Mã hóa AES (CCCD).\n[DEV] Trích xuất tập dữ liệu mẫu thành công cho môi trường TEST.";
 
             return result;
         }
+
+        public LoginResult ValidateOperatorLogin(string username, string password)
+        {
+            EnsureDatabaseConfigured();
+
+            string normalizedUser = (username ?? string.Empty).Trim();
+            string inputPassword = password ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(normalizedUser) || string.IsNullOrWhiteSpace(inputPassword))
+            {
+                return new LoginResult
+                {
+                    Success = false,
+                    Message = "Thiếu thông tin đăng nhập."
+                };
+            }
+
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            const string sql = @"SELECT TenDangNhap, MatKhauHash, RoleID
+                                 FROM Customers
+                                 WHERE LOWER(TenDangNhap) = LOWER(@username)
+                                 LIMIT 1";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@username", normalizedUser);
+
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read())
+            {
+                return new LoginResult
+                {
+                    Success = false,
+                    Message = "Tài khoản hoặc mật khẩu sai."
+                };
+            }
+
+            int roleId = reader["RoleID"] == DBNull.Value ? 0 : Convert.ToInt32(reader["RoleID"]);
+            if (roleId != 2 && roleId != 3)
+            {
+                return new LoginResult
+                {
+                    Success = false,
+                    Message = "Tài khoản hoặc mật khẩu sai."
+                };
+            }
+
+            string storedPasswordValue = reader["MatKhauHash"]?.ToString() ?? "";
+
+            // Chuẩn chính: SHA-256 (hex). Giữ tương thích dữ liệu cũ dùng CustomHash.
+            string inputSha256 = ComputeSha256Hex(inputPassword);
+            string inputLegacyHash = new string(CustomHash.ComputeHash(CustomStringHelper.ToCharArray(inputPassword)));
+
+            bool ok = string.Equals(inputSha256, storedPasswordValue, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(inputLegacyHash, storedPasswordValue, StringComparison.OrdinalIgnoreCase);
+
+            return new LoginResult
+            {
+                Success = ok,
+                Role = roleId == 2 ? "cskh" : "dev",
+                Message = ok ? "Đăng nhập hợp lệ." : "Tài khoản hoặc mật khẩu sai."
+            };
+        }
+
+        public CustomerManageListResponse GetCustomersForManagement(int page, int pageSize)
+        {
+            EnsureDatabaseConfigured();
+
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 200) pageSize = 200;
+
+            var response = new CustomerManageListResponse
+            {
+                Page = page,
+                PageSize = pageSize
+            };
+
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            using (var countCmd = new MySqlCommand("SELECT COUNT(*) FROM Customers", conn))
+            {
+                response.Total = Convert.ToInt32(countCmd.ExecuteScalar());
+            }
+
+            int offset = (page - 1) * pageSize;
+            const string query = @"SELECT CustomerID, MaKhachHang, HoTen, SoDienThoai, Email, SoCCCD, RoleID
+                                   FROM Customers
+                                   ORDER BY CustomerID DESC
+                                   LIMIT @limit OFFSET @offset";
+
+            using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@limit", pageSize);
+            cmd.Parameters.AddWithValue("@offset", offset);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                char[] name = CustomStringHelper.ToCharArray(reader["HoTen"]?.ToString() ?? "");
+                char[] phone = CustomStringHelper.ToCharArray(DecryptIfNeeded(reader["SoDienThoai"]?.ToString()));
+                char[] email = CustomStringHelper.ToCharArray(DecryptIfNeeded(reader["Email"]?.ToString()));
+                char[] cccd = CustomStringHelper.ToCharArray(DecryptIfNeeded(reader["SoCCCD"]?.ToString()));
+
+                response.Rows.Add(new CustomerManageDto
+                {
+                    CustomerId = Convert.ToInt64(reader["CustomerID"]),
+                    MaKhachHang = reader["MaKhachHang"]?.ToString() ?? "",
+                    MaskedName = new string(CustomDataMasker.MaskFullName(name)),
+                    MaskedPhone = new string(CustomDataMasker.MaskPhoneNumber(phone)),
+                    MaskedEmail = new string(CustomDataMasker.MaskEmail(email)),
+                    MaskedCccd = new string(CustomDataMasker.MaskBankAccount(cccd)),
+                    RoleId = reader["RoleID"] == DBNull.Value ? 1 : Convert.ToInt32(reader["RoleID"])
+                });
+            }
+
+            return response;
+        }
+
+        public OperationResponse CreateCustomer(CustomerManageUpsertRequest req)
+        {
+            EnsureDatabaseConfigured();
+
+            if (!ValidateUpsertRequest(req, out string validateError))
+            {
+                return new OperationResponse { Success = false, Message = validateError };
+            }
+
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            string username = ResolveUsernameForCreate(req);
+            string passwordHash = ResolvePasswordHashForCreate(req);
+
+            string encryptedPhone = EncryptForStorage(req.SoDienThoai.Trim());
+            string encryptedEmail = EncryptForStorage(req.Email.Trim());
+            string encryptedCccd = EncryptForStorage(req.SoCCCD.Trim());
+            string encryptedAccount = EncryptForStorage((req.SoTaiKhoan ?? string.Empty).Trim());
+            string encryptedCard = EncryptForStorage((req.SoThe ?? string.Empty).Trim());
+            string phoneIdx = ComputeSearchIndex(req.SoDienThoai);
+            string cccdIdx = ComputeSearchIndex(req.SoCCCD);
+            string accountIdx = ComputeSearchIndex(req.SoTaiKhoan);
+            string cardIdx = ComputeSearchIndex(req.SoThe);
+
+            const string sql = @"INSERT INTO Customers
+                                 (MaKhachHang, HoTen, SoDienThoai, Email, SoCCCD, SoTaiKhoan, SoThe,
+                                  SoDienThoaiIdx, SoCCCDIdx, SoTaiKhoanIdx, SoTheIdx,
+                                  RoleID, TenDangNhap, MatKhauHash, PinGiaoDich)
+                                 VALUES
+                                 (@ma, @name, @phone, @email, @cccd, @stk, @sothe,
+                                  @phoneIdx, @cccdIdx, @accountIdx, @cardIdx,
+                                  @role, @username, @passwordHash, @pin)";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ma", req.MaKhachHang.Trim());
+            cmd.Parameters.AddWithValue("@name", req.HoTen.Trim());
+            cmd.Parameters.AddWithValue("@phone", encryptedPhone);
+            cmd.Parameters.AddWithValue("@email", encryptedEmail);
+            cmd.Parameters.AddWithValue("@cccd", encryptedCccd);
+            cmd.Parameters.AddWithValue("@stk", string.IsNullOrWhiteSpace(encryptedAccount) ? DBNull.Value : encryptedAccount);
+            cmd.Parameters.AddWithValue("@sothe", string.IsNullOrWhiteSpace(encryptedCard) ? DBNull.Value : encryptedCard);
+            cmd.Parameters.AddWithValue("@phoneIdx", string.IsNullOrWhiteSpace(phoneIdx) ? DBNull.Value : phoneIdx);
+            cmd.Parameters.AddWithValue("@cccdIdx", string.IsNullOrWhiteSpace(cccdIdx) ? DBNull.Value : cccdIdx);
+            cmd.Parameters.AddWithValue("@accountIdx", string.IsNullOrWhiteSpace(accountIdx) ? DBNull.Value : accountIdx);
+            cmd.Parameters.AddWithValue("@cardIdx", string.IsNullOrWhiteSpace(cardIdx) ? DBNull.Value : cardIdx);
+            cmd.Parameters.AddWithValue("@role", req.RoleId);
+            cmd.Parameters.AddWithValue("@username", username);
+            cmd.Parameters.AddWithValue("@passwordHash", passwordHash);
+            cmd.Parameters.AddWithValue("@pin", DBNull.Value);
+
+            int affected = cmd.ExecuteNonQuery();
+            return new OperationResponse
+            {
+                Success = affected > 0,
+                Message = affected > 0 ? "Tạo khách hàng thành công." : "Không thể tạo khách hàng."
+            };
+        }
+
+        public OperationResponse UpdateCustomer(long customerId, CustomerManageUpsertRequest req)
+        {
+            EnsureDatabaseConfigured();
+
+            if (customerId <= 0)
+            {
+                return new OperationResponse { Success = false, Message = "CustomerID không hợp lệ." };
+            }
+
+            if (!ValidateUpsertRequest(req, out string validateError))
+            {
+                return new OperationResponse { Success = false, Message = validateError };
+            }
+
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            string encryptedPhone = EncryptForStorage(req.SoDienThoai.Trim());
+            string encryptedEmail = EncryptForStorage(req.Email.Trim());
+            string encryptedCccd = EncryptForStorage(req.SoCCCD.Trim());
+            string encryptedAccount = EncryptForStorage((req.SoTaiKhoan ?? string.Empty).Trim());
+            string encryptedCard = EncryptForStorage((req.SoThe ?? string.Empty).Trim());
+            string phoneIdx = ComputeSearchIndex(req.SoDienThoai);
+            string cccdIdx = ComputeSearchIndex(req.SoCCCD);
+            string accountIdx = ComputeSearchIndex(req.SoTaiKhoan);
+            string cardIdx = ComputeSearchIndex(req.SoThe);
+
+            const string sql = @"UPDATE Customers
+                                 SET MaKhachHang=@ma,
+                                     HoTen=@name,
+                                     SoDienThoai=@phone,
+                                     Email=@email,
+                                     SoCCCD=@cccd,
+                                     SoTaiKhoan=@stk,
+                                     SoThe=@sothe,
+                                     SoDienThoaiIdx=@phoneIdx,
+                                     SoCCCDIdx=@cccdIdx,
+                                     SoTaiKhoanIdx=@accountIdx,
+                                     SoTheIdx=@cardIdx,
+                                     RoleID=@role
+                                 WHERE CustomerID=@id";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ma", req.MaKhachHang.Trim());
+            cmd.Parameters.AddWithValue("@name", req.HoTen.Trim());
+            cmd.Parameters.AddWithValue("@phone", encryptedPhone);
+            cmd.Parameters.AddWithValue("@email", encryptedEmail);
+            cmd.Parameters.AddWithValue("@cccd", encryptedCccd);
+            cmd.Parameters.AddWithValue("@stk", string.IsNullOrWhiteSpace(encryptedAccount) ? DBNull.Value : encryptedAccount);
+            cmd.Parameters.AddWithValue("@sothe", string.IsNullOrWhiteSpace(encryptedCard) ? DBNull.Value : encryptedCard);
+            cmd.Parameters.AddWithValue("@phoneIdx", string.IsNullOrWhiteSpace(phoneIdx) ? DBNull.Value : phoneIdx);
+            cmd.Parameters.AddWithValue("@cccdIdx", string.IsNullOrWhiteSpace(cccdIdx) ? DBNull.Value : cccdIdx);
+            cmd.Parameters.AddWithValue("@accountIdx", string.IsNullOrWhiteSpace(accountIdx) ? DBNull.Value : accountIdx);
+            cmd.Parameters.AddWithValue("@cardIdx", string.IsNullOrWhiteSpace(cardIdx) ? DBNull.Value : cardIdx);
+            cmd.Parameters.AddWithValue("@role", req.RoleId);
+            cmd.Parameters.AddWithValue("@id", customerId);
+
+            int affected = cmd.ExecuteNonQuery();
+            return new OperationResponse
+            {
+                Success = affected > 0,
+                Message = affected > 0 ? "Cập nhật khách hàng thành công." : "Không tìm thấy khách hàng để cập nhật."
+            };
+        }
+
+        public OperationResponse DeleteCustomer(long customerId)
+        {
+            EnsureDatabaseConfigured();
+
+            if (customerId <= 0)
+            {
+                return new OperationResponse { Success = false, Message = "CustomerID không hợp lệ." };
+            }
+
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            using var cmd = new MySqlCommand("DELETE FROM Customers WHERE CustomerID = @id", conn);
+            cmd.Parameters.AddWithValue("@id", customerId);
+
+            int affected = cmd.ExecuteNonQuery();
+            return new OperationResponse
+            {
+                Success = affected > 0,
+                Message = affected > 0 ? "Xóa khách hàng thành công." : "Không tìm thấy khách hàng để xóa."
+            };
+        }
+
+        private string EncryptForStorage(string plainValue)
+        {
+            if (string.IsNullOrWhiteSpace(plainValue))
+            {
+                return string.Empty;
+            }
+
+            char[] encrypted = CustomAES.EncryptData(
+                CustomStringHelper.ToCharArray(plainValue),
+                CustomStringHelper.ToCharArray(_dataEncryptionSecret));
+            return "ENC:" + new string(encrypted);
+        }
+
+        private string DecryptIfNeeded(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string payload = value.StartsWith("ENC:", StringComparison.Ordinal)
+                ? value[4..]
+                : value;
+
+            char[] decrypted = CustomAES.DecryptData(
+                CustomStringHelper.ToCharArray(payload),
+                CustomStringHelper.ToCharArray(_dataEncryptionSecret));
+
+            if (decrypted.Length == 0)
+            {
+                return value;
+            }
+
+            return new string(decrypted);
+        }
+
+        private static string ComputeSha256Hex(string input)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(input ?? string.Empty);
+            return CustomSha256.ComputeHex(bytes);
+        }
+
+        private static string MaskCredential(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "";
+            }
+
+            if (value.Length <= 4)
+            {
+                return "****";
+            }
+
+            return new string('*', value.Length - 4) + value[^4..];
+        }
+
+        private static string ResolveUsernameForCreate(CustomerManageUpsertRequest req)
+        {
+            if (!string.IsNullOrWhiteSpace(req.Username))
+            {
+                return req.Username.Trim().ToLowerInvariant();
+            }
+
+            return "kh_" + (req.MaKhachHang ?? string.Empty).Trim().ToLowerInvariant();
+        }
+
+        private static string ResolvePasswordHashForCreate(CustomerManageUpsertRequest req)
+        {
+            if (!string.IsNullOrWhiteSpace(req.Password))
+            {
+                return ComputeSha256Hex(req.Password.Trim());
+            }
+
+            // Mặc định cho dữ liệu demo, cần đổi sau khi cấp tài khoản thật.
+            return ComputeSha256Hex("123456");
+        }
+
+        private void EnsureDatabaseConfigured()
+        {
+            if (!string.IsNullOrWhiteSpace(_configurationError))
+            {
+                throw new InvalidOperationException(_configurationError);
+            }
+        }
+
+        private string NormalizeEncryptedField(string? currentValue, SensitiveFieldKind kind, ref bool changed)
+        {
+            if (string.IsNullOrWhiteSpace(currentValue))
+            {
+                return string.Empty;
+            }
+
+            if (currentValue.StartsWith("ENC:", StringComparison.Ordinal))
+            {
+                return currentValue;
+            }
+
+            // If this is an older encrypted value (without ENC:), mark it to avoid re-encryption.
+            string decrypted = TryDecryptLegacyCipher(currentValue);
+            if (!string.IsNullOrWhiteSpace(decrypted) && LooksLikePlainSensitiveValue(decrypted, kind))
+            {
+                changed = true;
+                return "ENC:" + currentValue;
+            }
+
+            changed = true;
+            return EncryptForStorage(currentValue);
+        }
+
+        private string TryDecryptLegacyCipher(string value)
+        {
+            char[] decrypted = CustomAES.DecryptData(
+                CustomStringHelper.ToCharArray(value),
+                CustomStringHelper.ToCharArray(_dataEncryptionSecret));
+
+            return decrypted.Length == 0 ? string.Empty : new string(decrypted);
+        }
+
+        private static bool LooksLikePlainSensitiveValue(string value, SensitiveFieldKind kind)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string text = value.Trim();
+            switch (kind)
+            {
+                case SensitiveFieldKind.Email:
+                    return text.Contains('@') && text.Contains('.');
+
+                case SensitiveFieldKind.Phone:
+                    return IsDigitsOnly(text, minLen: 8, maxLen: 15);
+
+                case SensitiveFieldKind.Cccd:
+                    return IsAlnumOnly(text, minLen: 8, maxLen: 20);
+
+                case SensitiveFieldKind.Account:
+                    return IsDigitsOnly(text, minLen: 8, maxLen: 25);
+
+                case SensitiveFieldKind.Card:
+                    if (string.Equals(text, "N/A", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                    return IsDigitsOnly(text, minLen: 12, maxLen: 25);
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsDigitsOnly(string text, int minLen, int maxLen)
+        {
+            if (text.Length < minLen || text.Length > maxLen)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] < '0' || text[i] > '9')
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsAlnumOnly(string text, int minLen, int maxLen)
+        {
+            if (text.Length < minLen || text.Length > maxLen)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                bool isDigit = c >= '0' && c <= '9';
+                bool isUpper = c >= 'A' && c <= 'Z';
+                bool isLower = c >= 'a' && c <= 'z';
+                if (!isDigit && !isUpper && !isLower)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ValidateUpsertRequest(CustomerManageUpsertRequest req, out string error)
+        {
+            error = "";
+            if (req == null)
+            {
+                error = "Dữ liệu yêu cầu không hợp lệ.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(req.MaKhachHang)
+                || string.IsNullOrWhiteSpace(req.HoTen)
+                || string.IsNullOrWhiteSpace(req.SoDienThoai)
+                || string.IsNullOrWhiteSpace(req.Email)
+                || string.IsNullOrWhiteSpace(req.SoCCCD))
+            {
+                error = "Thiếu dữ liệu bắt buộc (Mã KH, Họ tên, SĐT, Email, CCCD).";
+                return false;
+            }
+
+            if (req.RoleId < 1 || req.RoleId > 3)
+            {
+                error = "RoleID chỉ hợp lệ trong khoảng 1..3.";
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    internal enum SensitiveFieldKind
+    {
+        Phone,
+        Email,
+        Cccd,
+        Account,
+        Card
     }
 
     public static class CustomStringHelper
@@ -232,6 +1164,137 @@ namespace BankMaskingAPI
         }
     }
 
+    public static class CustomSha256
+    {
+        private static readonly uint[] K =
+        {
+            0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+            0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+            0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+            0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+            0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+            0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+            0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+            0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+            0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+            0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+            0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+            0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+            0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+            0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+            0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+            0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+        };
+
+        public static string ComputeHex(byte[] message)
+        {
+            byte[] padded = PadMessage(message ?? Array.Empty<byte>());
+
+            uint h0 = 0x6a09e667u;
+            uint h1 = 0xbb67ae85u;
+            uint h2 = 0x3c6ef372u;
+            uint h3 = 0xa54ff53au;
+            uint h4 = 0x510e527fu;
+            uint h5 = 0x9b05688cu;
+            uint h6 = 0x1f83d9abu;
+            uint h7 = 0x5be0cd19u;
+
+            uint[] w = new uint[64];
+            for (int offset = 0; offset < padded.Length; offset += 64)
+            {
+                for (int i = 0; i < 16; i++)
+                {
+                    int idx = offset + (i * 4);
+                    w[i] = ((uint)padded[idx] << 24)
+                        | ((uint)padded[idx + 1] << 16)
+                        | ((uint)padded[idx + 2] << 8)
+                        | padded[idx + 3];
+                }
+
+                for (int i = 16; i < 64; i++)
+                {
+                    uint s0 = SmallSigma0(w[i - 15]);
+                    uint s1 = SmallSigma1(w[i - 2]);
+                    w[i] = unchecked(w[i - 16] + s0 + w[i - 7] + s1);
+                }
+
+                uint a = h0;
+                uint b = h1;
+                uint c = h2;
+                uint d = h3;
+                uint e = h4;
+                uint f = h5;
+                uint g = h6;
+                uint h = h7;
+
+                for (int i = 0; i < 64; i++)
+                {
+                    uint t1 = unchecked(h + BigSigma1(e) + Ch(e, f, g) + K[i] + w[i]);
+                    uint t2 = unchecked(BigSigma0(a) + Maj(a, b, c));
+
+                    h = g;
+                    g = f;
+                    f = e;
+                    e = unchecked(d + t1);
+                    d = c;
+                    c = b;
+                    b = a;
+                    a = unchecked(t1 + t2);
+                }
+
+                h0 = unchecked(h0 + a);
+                h1 = unchecked(h1 + b);
+                h2 = unchecked(h2 + c);
+                h3 = unchecked(h3 + d);
+                h4 = unchecked(h4 + e);
+                h5 = unchecked(h5 + f);
+                h6 = unchecked(h6 + g);
+                h7 = unchecked(h7 + h);
+            }
+
+            return ToHex(h0) + ToHex(h1) + ToHex(h2) + ToHex(h3)
+                + ToHex(h4) + ToHex(h5) + ToHex(h6) + ToHex(h7);
+        }
+
+        private static byte[] PadMessage(byte[] input)
+        {
+            ulong bitLength = (ulong)input.Length * 8UL;
+            int totalLength = input.Length + 1 + 8;
+            int paddedLength = ((totalLength + 63) / 64) * 64;
+
+            byte[] padded = new byte[paddedLength];
+            Buffer.BlockCopy(input, 0, padded, 0, input.Length);
+            padded[input.Length] = 0x80;
+
+            for (int i = 0; i < 8; i++)
+            {
+                padded[padded.Length - 1 - i] = (byte)((bitLength >> (8 * i)) & 0xffUL);
+            }
+
+            return padded;
+        }
+
+        private static uint RotateRight(uint x, int n) => (x >> n) | (x << (32 - n));
+        private static uint Ch(uint x, uint y, uint z) => (x & y) ^ (~x & z);
+        private static uint Maj(uint x, uint y, uint z) => (x & y) ^ (x & z) ^ (y & z);
+        private static uint BigSigma0(uint x) => RotateRight(x, 2) ^ RotateRight(x, 13) ^ RotateRight(x, 22);
+        private static uint BigSigma1(uint x) => RotateRight(x, 6) ^ RotateRight(x, 11) ^ RotateRight(x, 25);
+        private static uint SmallSigma0(uint x) => RotateRight(x, 7) ^ RotateRight(x, 18) ^ (x >> 3);
+        private static uint SmallSigma1(uint x) => RotateRight(x, 17) ^ RotateRight(x, 19) ^ (x >> 10);
+
+        private static string ToHex(uint value)
+        {
+            const string digits = "0123456789ABCDEF";
+            char[] chars = new char[8];
+            for (int i = 7; i >= 0; i--)
+            {
+                chars[i] = digits[(int)(value & 0x0Fu)];
+                value >>= 4;
+            }
+            return new string(chars);
+        }
+    }
+
     public static class CustomCryptography
     {
         public static char[] XorEncryptDecrypt(char[] input, char[] key)
@@ -252,6 +1315,7 @@ namespace BankMaskingAPI
         static readonly BigInteger n;
         static readonly BigInteger e;
         static readonly BigInteger d;
+        static readonly CustomPseudoRandom Prng = new CustomPseudoRandom();
 
         static CustomRSA()
         {
@@ -284,7 +1348,7 @@ namespace BankMaskingAPI
 
             while (true)
             {
-                RandomNumberGenerator.Fill(bytes);
+                Prng.FillBytes(bytes);
                 bytes[0] |= 0x01; 
                 bytes[bytes.Length - 1] |= 0x40; 
                 byte[] unsigned = new byte[bytes.Length + 1];
@@ -337,7 +1401,7 @@ namespace BankMaskingAPI
             BigInteger sample;
             do
             {
-                RandomNumberGenerator.Fill(bytes);
+                Prng.FillBytes(bytes);
                 bytes[bytes.Length - 1] = 0;
                 sample = new BigInteger(bytes);
             } while (sample >= range);
@@ -386,10 +1450,9 @@ namespace BankMaskingAPI
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=";
             char[] key = new char[length];
-            Random rnd = new Random(); 
             for (int i = 0; i < length; i++)
             {
-                key[i] = chars[rnd.Next(chars.Length)];
+                key[i] = chars[Prng.Next(chars.Length)];
             }
             return key;
         }
@@ -454,8 +1517,32 @@ namespace BankMaskingAPI
         {
             if (keyMaterial.Length == 32)
                 return (byte[])keyMaterial.Clone();
-            using (SHA256 sha = SHA256.Create())
-                return sha.ComputeHash(keyMaterial);
+
+            byte[] output = new byte[32];
+            for (int i = 0; i < 32; i++)
+            {
+                output[i] = (byte)(i * 37 + 11);
+            }
+
+            for (int i = 0; i < keyMaterial.Length; i++)
+            {
+                int idx = i % 32;
+                byte mixed = (byte)(keyMaterial[i] ^ (byte)(i * 29 + 7));
+                output[idx] = (byte)((output[idx] + mixed + output[(idx + 7) % 32]) & 0xff);
+                output[(idx + 13) % 32] = (byte)(output[(idx + 13) % 32] ^ (byte)(mixed << (i % 3)));
+            }
+
+            for (int round = 0; round < 16; round++)
+            {
+                for (int i = 0; i < 32; i++)
+                {
+                    byte left = output[(i + 31) % 32];
+                    byte right = output[(i + 1) % 32];
+                    output[i] = (byte)((output[i] ^ left) + right + round + i);
+                }
+            }
+
+            return output;
         }
 
         static byte[] Pkcs7Pad(byte[] data, int blockSize)
@@ -473,10 +1560,10 @@ namespace BankMaskingAPI
         {
             if (data.Length == 0) return data;
             int pad = data[data.Length - 1];
-            if (pad < 1 || pad > 16 || pad > data.Length) throw new CryptographicException("Invalid padding.");
+            if (pad < 1 || pad > 16 || pad > data.Length) throw new InvalidOperationException("Invalid padding.");
             for (int i = data.Length - pad; i < data.Length; i++)
             {
-                if (data[i] != pad) throw new CryptographicException("Invalid padding.");
+                if (data[i] != pad) throw new InvalidOperationException("Invalid padding.");
             }
             byte[] outBuf = new byte[data.Length - pad];
             Buffer.BlockCopy(data, 0, outBuf, 0, outBuf.Length);
@@ -651,7 +1738,7 @@ namespace BankMaskingAPI
             byte[] padded = Pkcs7Pad(pt, 16);
             
             byte[] iv = new byte[16];
-            RandomNumberGenerator.Fill(iv);
+            CustomPseudoRandom.FillBytesStatic(iv);
 
             byte[] cipher = new byte[padded.Length];
             byte[] previousCipherBlock = new byte[16];
@@ -746,6 +1833,67 @@ namespace BankMaskingAPI
             byte[] blockOut = new byte[16];
             DecryptBlock(blockIn, blockOut, key256);
             Buffer.BlockCopy(blockOut, 0, output, outOff, 16);
+        }
+    }
+
+    public sealed class CustomPseudoRandom
+    {
+        private ulong _state;
+        private readonly object _sync = new object();
+
+        public CustomPseudoRandom()
+        {
+            unchecked
+            {
+                _state = (ulong)DateTime.UtcNow.Ticks;
+                _state ^= (ulong)Environment.TickCount << 17;
+                _state ^= 0x9E3779B97F4A7C15UL;
+                if (_state == 0)
+                {
+                    _state = 0xA5A5A5A5A5A5A5A5UL;
+                }
+            }
+        }
+
+        public int Next(int maxExclusive)
+        {
+            if (maxExclusive <= 0)
+            {
+                return 0;
+            }
+
+            ulong value = NextUInt64();
+            return (int)(value % (ulong)maxExclusive);
+        }
+
+        public void FillBytes(byte[] buffer)
+        {
+            if (buffer == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                buffer[i] = (byte)(NextUInt64() & 0xff);
+            }
+        }
+
+        public static void FillBytesStatic(byte[] buffer)
+        {
+            var prng = new CustomPseudoRandom();
+            prng.FillBytes(buffer);
+        }
+
+        private ulong NextUInt64()
+        {
+            lock (_sync)
+            {
+                _state ^= _state << 13;
+                _state ^= _state >> 7;
+                _state ^= _state << 17;
+                return _state;
+            }
         }
     }
 

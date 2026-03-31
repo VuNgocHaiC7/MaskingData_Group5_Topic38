@@ -1,11 +1,32 @@
 using System;
 using System.Drawing;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using Newtonsoft.Json;
 
 namespace DataMaskingSystem
 {
+    public sealed class OperatorLoginRequest
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+
+    public sealed class LoginResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string Token { get; set; } = "";
+    }
+
     public class LoginForm : Form
     {
+        private static readonly HttpClient AuthHttpClient = new HttpClient();
+        private const string ApiBaseUrl = "https://localhost:7299";
+
         readonly TextBox txtUser;
         readonly TextBox txtPass;
         readonly Label lblMessage;
@@ -67,7 +88,7 @@ namespace DataMaskingSystem
 
             Label lblUser = new Label
             {
-                Text = "UserName (CSKH/DEV)",
+                Text = "UserName",
                 Font = new Font("Segoe UI", 8, FontStyle.Bold),
                 ForeColor = Color.FromArgb(40, 50, 70),
                 AutoSize = true,
@@ -75,7 +96,7 @@ namespace DataMaskingSystem
             };
 
             Panel pnlUser = CreateInputBox(214, out txtUser);
-            txtUser.PlaceholderText = "Nhập ID (cskh hoặc dev)";
+            txtUser.PlaceholderText = "Nhập TenDangNhap";
 
             Label lblPass = new Label
             {
@@ -196,7 +217,7 @@ namespace DataMaskingSystem
 
         private void DrawCardBorder(object? sender, PaintEventArgs e)
         {
-            Panel panel = sender as Panel;
+            Panel? panel = sender as Panel;
             if (panel == null) return;
             using (Pen borderPen = new Pen(Color.FromArgb(220, 225, 230)))
             {
@@ -208,48 +229,112 @@ namespace DataMaskingSystem
         {
             if (e.KeyCode == Keys.Enter)
             {
-                AttemptLogin();
+                _ = AttemptLoginAsync();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
         }
 
-        private void BtnLogin_Click(object? sender, EventArgs e)
+        private async void BtnLogin_Click(object? sender, EventArgs e)
         {
-            AttemptLogin();
+            await AttemptLoginAsync();
         }
 
-        private void AttemptLogin()
+        private async Task AttemptLoginAsync()
         {
             lblMessage.Visible = false;
 
             string user = (txtUser.Text ?? string.Empty).Trim().ToLowerInvariant();
-            char[] passChars = CustomStringHelper.ToCharArray(txtPass.Text);
+            string password = txtPass.Text ?? string.Empty;
 
-            string hashedInput = new string(CustomHash.ComputeHash(passChars));
-            string expectedHash = new string(CustomHash.ComputeHash(CustomStringHelper.ToCharArray("123")));
-
-            if (hashedInput != expectedHash)
+            if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))
             {
-                lblMessage.Text = "Sai mật khẩu. Vui lòng thử lại.";
-                lblMessage.Visible = true;
+                ShowLoginError("Vui lòng nhập đầy đủ UserName và Password.", focusPassword: false);
+                return;
+            }
+
+            ToggleLoginBusyState(false);
+
+            try
+            {
+                var payload = new OperatorLoginRequest
+                {
+                    Username = user,
+                    Password = password
+                };
+
+                string apiUrl = $"{ApiBaseUrl}/api/customer/auth/login";
+                string body = JsonConvert.SerializeObject(payload);
+                using var content = new StringContent(body, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await AuthHttpClient.PostAsync(apiUrl, content);
+
+                string responseText = await response.Content.ReadAsStringAsync();
+                LoginResult? authResult = null;
+                try
+                {
+                    authResult = JsonConvert.DeserializeObject<LoginResult>(responseText);
+                }
+                catch
+                {
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ShowLoginError(authResult?.Message ?? "Tài khoản hoặc mật khẩu sai.");
+                    return;
+                }
+
+                if (authResult == null || !authResult.Success)
+                {
+                    ShowLoginError(authResult?.Message ?? "Tài khoản hoặc mật khẩu sai.");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(authResult.Token))
+                {
+                    ShowLoginError("Đăng nhập chưa cấp token. Vui lòng kiểm tra lại API.");
+                    return;
+                }
+
+                SelectedRole = string.IsNullOrWhiteSpace(authResult.Role) ? user : authResult.Role.Trim().ToLowerInvariant();
+                AuthSession.Set(authResult.Token.Trim(), SelectedRole);
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                ShowLoginError("Không thể kết nối API xác thực: " + ex.Message, focusPassword: false);
+            }
+            finally
+            {
+                ToggleLoginBusyState(true);
+            }
+        }
+
+        private void ShowLoginError(string message, bool focusPassword = true)
+        {
+            string text = string.IsNullOrWhiteSpace(message) ? "Tài khoản hoặc mật khẩu sai." : message;
+            lblMessage.Text = text;
+            lblMessage.Visible = true;
+
+            MessageBox.Show(this, text, "Đăng nhập thất bại", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+            if (focusPassword)
+            {
                 txtPass.SelectAll();
                 txtPass.Focus();
-                return;
             }
-
-            if (user != "cskh" && user != "dev")
+            else
             {
-                lblMessage.Text = "Client ID không hợp lệ. Chỉ chấp nhận 'cskh' hoặc 'dev'.";
-                lblMessage.Visible = true;
-                txtUser.SelectAll();
                 txtUser.Focus();
-                return;
             }
+        }
 
-            SelectedRole = user;
-            DialogResult = DialogResult.OK;
-            Close();
+        private void ToggleLoginBusyState(bool enabled)
+        {
+            txtUser.Enabled = enabled;
+            txtPass.Enabled = enabled;
+            this.UseWaitCursor = !enabled;
         }
     }
 
