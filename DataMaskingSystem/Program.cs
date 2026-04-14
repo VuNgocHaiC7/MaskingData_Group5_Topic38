@@ -13,9 +13,11 @@ namespace DataMaskingSystem
     {
         public Panel PnlCSKH { get; set; }
         public Panel PnlDEV { get; set; }
+        public Panel PnlSearchArea { get; set; }
         public TextBox TxtSearchID { get; set; }
         public ComboBox CboSearchType { get; set; }
         public Button BtnSearch { get; set; }
+        public Button BtnCskhUpdateRequest { get; set; }
         public Button BtnExport { get; set; }
         public Button BtnSaveFile { get; set; }
         public Button BtnLogout { get; set; }
@@ -23,6 +25,7 @@ namespace DataMaskingSystem
         public RichTextBox TxtConsole { get; set; }
         public DataGridView DgvDev { get; set; }
         public DataGridView DgvCustomerDetails { get; set; }
+        public Label LblDetailsTitle { get; set; }
         public PictureBox PicPortrait { get; set; }
         public Label LblMaskedCard { get; set; }
         public Label LblBalance { get; set; }
@@ -43,19 +46,27 @@ namespace DataMaskingSystem
         public MainForm(string selectedRole)
         {
             _selectedRole = selectedRole;
-            _ui = MainFormUiManager.Build(this, OnSearchClick, OnExportClick, OnLogoutClick);
+            _ui = MainFormUiManager.Build(this, OnSearchClick, OnExportClick, OnSaveCsvClick, OnLogoutClick);
             ApplyRolePermissions();
+            this.Shown += MainForm_Shown;
         }
 
         private void ApplyRolePermissions()
         {
-            _ui.PnlCSKH.Visible = (_selectedRole == "cskh");
+            _ui.PnlCSKH.Visible = (_selectedRole == "cskh" || _selectedRole == "kh");
             _ui.PnlDEV.Visible = (_selectedRole == "dev");
+            _ui.BtnCskhUpdateRequest.Visible = (_selectedRole == "cskh");
 
             if (_selectedRole == "cskh")
             {
                 _ui.LblRole.Text = "Vai trò hiện tại: CSKH | Dynamic Data Masking";
                 _ui.TxtConsole.Text = "Đăng nhập thành công. Quyền CSKH đã được cấp.";
+            }
+            else if (_selectedRole == "kh")
+            {
+                _ui.LblRole.Text = "Vai trò hiện tại: KHÁCH HÀNG | Hồ sơ cá nhân";
+                _ui.TxtConsole.Text = "Đăng nhập thành công. Đang tải hồ sơ cá nhân...";
+                MainFormUiManager.ConfigureCustomerSelfLayout(_ui);
             }
             else if (_selectedRole == "dev")
             {
@@ -69,6 +80,14 @@ namespace DataMaskingSystem
             }
         }
 
+        private async void MainForm_Shown(object? sender, EventArgs e)
+        {
+            if (_selectedRole == "kh")
+            {
+                await MainFormUiManager.LoadAndDisplayMyProfile(_ui);
+            }
+        }
+
         private async Task OnSearchClick()
         {
             await MainFormUiManager.SearchAndDisplay(_ui, _ui.CboSearchType.SelectedIndex, _ui.TxtSearchID.Text);
@@ -77,6 +96,11 @@ namespace DataMaskingSystem
         private async Task OnExportClick()
         {
             await MainFormUiManager.ExportAndDisplay(_ui);
+        }
+
+        private void OnSaveCsvClick(object? sender, EventArgs e)
+        {
+            MainFormUiManager.SaveDevGridToCsv(_ui);
         }
 
         private void OnLogoutClick(object? sender, EventArgs e)

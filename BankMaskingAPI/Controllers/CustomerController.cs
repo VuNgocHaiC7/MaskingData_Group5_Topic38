@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using System;
 
 namespace BankMaskingAPI.Controllers
@@ -8,6 +9,21 @@ namespace BankMaskingAPI.Controllers
     {
         public string Username { get; set; } = "";
         public string Password { get; set; } = "";
+        public string ClientId { get; set; } = "";
+    }
+
+    public sealed class CskhUpdateRequestApiModel
+    {
+        public long CustomerId { get; set; }
+        public string RequestReason { get; set; } = "";
+        public string HoTen { get; set; } = "";
+        public string NgaySinh { get; set; } = "";
+        public int? GioiTinh { get; set; }
+        public string QuocTich { get; set; } = "";
+        public string DiaChiNha { get; set; } = "";
+        public string SoDienThoai { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string SoCCCD { get; set; } = "";
     }
 
     [Route("api/[controller]")]
@@ -29,6 +45,11 @@ namespace BankMaskingAPI.Controllers
         {
             try
             {
+                if (!IsClientBoundSessionValid())
+                {
+                    return Unauthorized(new { message = "Phiên truy cập không hợp lệ." });
+                }
+
                 var result = _security.SearchCustomerCskh(type, keyword);
                 if (!result.Found)
                     return NotFound(new { message = result.DisplayText });
@@ -69,10 +90,99 @@ namespace BankMaskingAPI.Controllers
                 }
 
                 string normalizedUser = (request?.Username ?? string.Empty).Trim().ToLowerInvariant();
-                var tokenPayload = _tokenService.CreateToken(normalizedUser, result.Role);
+                string normalizedClientId = (request?.ClientId ?? string.Empty).Trim();
+                if (normalizedClientId.Length > 128)
+                {
+                    normalizedClientId = normalizedClientId[..128];
+                }
+
+                var tokenPayload = _tokenService.CreateToken(normalizedUser, result.Role, result.CustomerId, normalizedClientId);
                 result.Token = tokenPayload.Token;
                 result.ExpiresAtUtc = tokenPayload.ExpiresAtUtc;
 
+                ApplySensitiveResponseHeaders();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi Server: " + ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "kh")]
+        [HttpGet("me/profile")]
+        public IActionResult MyProfile()
+        {
+            try
+            {
+                string? customerIdText = User.FindFirstValue("customer_id");
+                if (!long.TryParse(customerIdText, out long customerId) || customerId <= 0)
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ." });
+                }
+
+                string tokenClientId = (User.FindFirstValue("client_id") ?? string.Empty).Trim();
+                string requestClientId = (Request.Headers["X-Client-Id"].ToString() ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(tokenClientId)
+                    && !string.Equals(tokenClientId, requestClientId, StringComparison.Ordinal))
+                {
+                    return Unauthorized(new { message = "Phiên truy cập không hợp lệ." });
+                }
+
+                var profile = _security.GetCustomerSelfProfile(customerId);
+                if (!profile.Found)
+                {
+                    return NotFound(new { message = profile.Message });
+                }
+
+                ApplySensitiveResponseHeaders();
+                return Ok(profile);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi Server: " + ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "cskh")]
+        [HttpPost("cskh/update-request")]
+        public IActionResult SubmitCustomerUpdateRequest([FromBody] CskhUpdateRequestApiModel request)
+        {
+            try
+            {
+                if (!IsClientBoundSessionValid())
+                {
+                    return Unauthorized(new { message = "Phiên truy cập không hợp lệ." });
+                }
+
+                string? actorIdText = User.FindFirstValue("customer_id");
+                if (!long.TryParse(actorIdText, out long actorId) || actorId <= 0)
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ." });
+                }
+
+                var model = new CskhCustomerInfoUpdateRequest
+                {
+                    CustomerId = request?.CustomerId ?? 0,
+                    RequestReason = request?.RequestReason ?? string.Empty,
+                    HoTen = request?.HoTen ?? string.Empty,
+                    NgaySinh = request?.NgaySinh ?? string.Empty,
+                    GioiTinh = request?.GioiTinh,
+                    QuocTich = request?.QuocTich ?? string.Empty,
+                    DiaChiNha = request?.DiaChiNha ?? string.Empty,
+                    SoDienThoai = request?.SoDienThoai ?? string.Empty,
+                    Email = request?.Email ?? string.Empty,
+                    SoCCCD = request?.SoCCCD ?? string.Empty
+                };
+
+                var result = _security.SubmitCskhUpdateRequest(actorId, model);
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                ApplySensitiveResponseHeaders();
                 return Ok(result);
             }
             catch (Exception ex)
@@ -158,6 +268,25 @@ namespace BankMaskingAPI.Controllers
             {
                 return StatusCode(500, new { message = "Lỗi Server: " + ex.Message });
             }
+        }
+
+        private void ApplySensitiveResponseHeaders()
+        {
+            Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+            Response.Headers["Pragma"] = "no-cache";
+            Response.Headers["Expires"] = "0";
+        }
+
+        private bool IsClientBoundSessionValid()
+        {
+            string tokenClientId = (User.FindFirstValue("client_id") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(tokenClientId))
+            {
+                return true;
+            }
+
+            string requestClientId = (Request.Headers["X-Client-Id"].ToString() ?? string.Empty).Trim();
+            return string.Equals(tokenClientId, requestClientId, StringComparison.Ordinal);
         }
     }
 }
