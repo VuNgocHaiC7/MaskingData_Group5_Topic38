@@ -12,6 +12,7 @@ namespace DataMaskingSystem
     {
         public string Username { get; set; } = "";
         public string Password { get; set; } = "";
+        public string ClientId { get; set; } = "";
     }
 
     public sealed class LoginResult
@@ -19,6 +20,7 @@ namespace DataMaskingSystem
         public bool Success { get; set; }
         public string Message { get; set; } = "";
         public string Role { get; set; } = "";
+        public long CustomerId { get; set; }
         public string Token { get; set; } = "";
     }
 
@@ -257,10 +259,13 @@ namespace DataMaskingSystem
 
             try
             {
+                string clientId = Guid.NewGuid().ToString("N");
+
                 var payload = new OperatorLoginRequest
                 {
                     Username = user,
-                    Password = password
+                    Password = password,
+                    ClientId = clientId
                 };
 
                 string apiUrl = $"{ApiBaseUrl}/api/customer/auth/login";
@@ -296,8 +301,8 @@ namespace DataMaskingSystem
                     return;
                 }
 
-                SelectedRole = string.IsNullOrWhiteSpace(authResult.Role) ? user : authResult.Role.Trim().ToLowerInvariant();
-                AuthSession.Set(authResult.Token.Trim(), SelectedRole);
+                SelectedRole = string.IsNullOrWhiteSpace(authResult.Role) ? "kh" : authResult.Role.Trim().ToLowerInvariant();
+                AuthSession.Set(authResult.Token.Trim(), SelectedRole, clientId);
                 DialogResult = DialogResult.OK;
                 Close();
             }

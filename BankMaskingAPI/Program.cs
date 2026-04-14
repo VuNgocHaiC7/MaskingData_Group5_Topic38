@@ -57,6 +57,10 @@ namespace BankMaskingAPI
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+            else
+            {
+                app.UseHsts();
+            }
 
             app.UseHttpsRedirection();
 

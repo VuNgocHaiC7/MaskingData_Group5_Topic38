@@ -34,10 +34,13 @@ namespace BankMaskingAPI
             }
         }
 
-        public JwtTokenPayload CreateToken(string username, string role)
+        public JwtTokenPayload CreateToken(string username, string role, long? customerId = null, string? clientId = null)
         {
             string normalizedUser = string.IsNullOrWhiteSpace(username) ? "unknown" : username.Trim().ToLowerInvariant();
             string normalizedRole = string.IsNullOrWhiteSpace(role) ? "cskh" : role.Trim().ToLowerInvariant();
+            string normalizedClientId = string.IsNullOrWhiteSpace(clientId)
+                ? string.Empty
+                : clientId.Trim();
 
             var now = DateTime.UtcNow;
             var expiresAt = now.AddMinutes(_expiresMinutes);
@@ -52,6 +55,16 @@ namespace BankMaskingAPI
                 new Claim("role", normalizedRole),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
             };
+
+            if (customerId.HasValue && customerId.Value > 0)
+            {
+                claims.Add(new Claim("customer_id", customerId.Value.ToString()));
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedClientId))
+            {
+                claims.Add(new Claim("client_id", normalizedClientId));
+            }
 
             var jwt = new JwtSecurityToken(
                 issuer: _issuer,

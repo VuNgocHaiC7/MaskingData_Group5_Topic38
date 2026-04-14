@@ -6,6 +6,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Newtonsoft.Json;
@@ -28,17 +29,84 @@ namespace DataMaskingSystem
 
     public class DevExportRowDto
     {
-        public string Id { get; set; } = "";
-        public string MaKh { get; set; } = "";
-        public string MaskedName { get; set; } = "";
+        public long CustomerID { get; set; }
+        public string HinhAnhChanDung { get; set; } = "";
+        public string HoTenMasked { get; set; } = "";
+        public string NgaySinh { get; set; } = "";
+        public int GioiTinh { get; set; }
+        public string MaKhachHang { get; set; } = "";
+        public string QuocTich { get; set; } = "";
+        public string DiaChiNhaMasked { get; set; } = "";
+        public decimal SoDu { get; set; }
+        public decimal DuNoHienTai { get; set; }
+        public int LoaiTaiKhoan { get; set; }
+        public int TrangThaiThe { get; set; }
+        public string TenDangNhapMasked { get; set; } = "";
+        public int RoleID { get; set; }
+
+        public string MaskedSoDienThoai { get; set; } = "";
         public string MaskedEmail { get; set; } = "";
-        public string CipherCccd { get; set; } = "";
+        public string MaskedSoCCCD { get; set; } = "";
+        public string MaskedSoTaiKhoan { get; set; } = "";
+        public string MaskedSoThe { get; set; } = "";
+
+        public string CipherSoDienThoai { get; set; } = "";
+        public string CipherEmail { get; set; } = "";
+        public string CipherSoCCCD { get; set; } = "";
+        public string CipherSoTaiKhoan { get; set; } = "";
+        public string CipherSoThe { get; set; } = "";
     }
 
     public class DevExportResponse
     {
         public List<DevExportRowDto> Rows { get; set; } = new();
         public string? ConsoleMessage { get; set; }
+    }
+
+    public class CustomerSelfProfileResponse
+    {
+        public bool Found { get; set; }
+        public string Message { get; set; } = "";
+        public string? PortraitImage { get; set; }
+        public long CustomerId { get; set; }
+        public string MaKhachHang { get; set; } = "";
+        public string HoTen { get; set; } = "";
+        public string NgaySinh { get; set; } = "";
+        public int GioiTinh { get; set; }
+        public string SoCCCD { get; set; } = "";
+        public string QuocTich { get; set; } = "";
+        public string SoDienThoai { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string DiaChiNha { get; set; } = "";
+        public string SoTaiKhoan { get; set; } = "";
+        public decimal SoDu { get; set; }
+        public decimal DuNoHienTai { get; set; }
+        public int LoaiTaiKhoan { get; set; }
+        public string SoThe { get; set; } = "";
+        public int TrangThaiThe { get; set; }
+        public string TenDangNhap { get; set; } = "";
+        public int RoleId { get; set; }
+    }
+
+    public class CskhUpdateRequestApiModel
+    {
+        public long CustomerId { get; set; }
+        public string RequestReason { get; set; } = "";
+        public string HoTen { get; set; } = "";
+        public string NgaySinh { get; set; } = "";
+        public int? GioiTinh { get; set; }
+        public string QuocTich { get; set; } = "";
+        public string DiaChiNha { get; set; } = "";
+        public string SoDienThoai { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string SoCCCD { get; set; } = "";
+    }
+
+    public class CskhUpdateRequestResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = "";
+        public long RequestId { get; set; }
     }
 
     public static class MainFormUiManager
@@ -63,7 +131,7 @@ namespace DataMaskingSystem
             "Mã KH",
             "Quốc tịch",
             "Trạng thái thẻ",
-            "Tài khoản chính (Mask)",
+            "Tài khoản chính",
             "Tên đăng nhập",
             "Địa chỉ nhà"
         };
@@ -156,6 +224,81 @@ namespace DataMaskingSystem
             }
         }
 
+        public static async Task SubmitCskhUpdateRequest(MainFormUiComponents ui)
+        {
+            if (ui.PnlSearchArea.Tag == null || !long.TryParse(ui.PnlSearchArea.Tag.ToString(), out long customerId) || customerId <= 0)
+            {
+                MessageBox.Show("Vui lòng tìm và chọn khách hàng trước khi cập nhật thông tin.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dialog = new CskhUpdateRequestDialog();
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            var payload = new CskhUpdateRequestApiModel
+            {
+                CustomerId = customerId,
+                RequestReason = dialog.RequestReason,
+                HoTen = dialog.HoTen,
+                NgaySinh = dialog.NgaySinh,
+                GioiTinh = dialog.GioiTinh,
+                QuocTich = dialog.QuocTich,
+                DiaChiNha = dialog.DiaChiNha,
+                SoDienThoai = dialog.SoDienThoai,
+                Email = dialog.Email,
+                SoCCCD = dialog.SoCCCD
+            };
+
+            try
+            {
+                ApplyAuthHeader();
+                string apiUrl = $"{ApiBaseUrl}/api/customer/cskh/update-request";
+                string body = JsonConvert.SerializeObject(payload);
+                using var content = new StringContent(body, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await _httpClient.PostAsync(apiUrl, content);
+
+                string responseText = await response.Content.ReadAsStringAsync();
+                CskhUpdateRequestResult? result = null;
+                try
+                {
+                    result = JsonConvert.DeserializeObject<CskhUpdateRequestResult>(responseText);
+                }
+                catch
+                {
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorMsg = result?.Message ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(errorMsg))
+                    {
+                        errorMsg = $"Cập nhật thất bại: {response.StatusCode}";
+                    }
+
+                    ui.TxtConsole.Text = errorMsg;
+                    MessageBox.Show(errorMsg, "Cập nhật thất bại", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string successMsg = result?.Message ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(successMsg))
+                {
+                    successMsg = "Đã cập nhật thông tin khách hàng thành công.";
+                }
+
+                ui.TxtConsole.Text = successMsg;
+                MessageBox.Show(successMsg, "Cập nhật thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ui.TxtConsole.Text = "Lỗi cập nhật thông tin: " + ex.Message;
+                MessageBox.Show("Không thể cập nhật thông tin khách hàng.\nChi tiết: " + ex.Message, "Lỗi kết nối", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         public static async Task ExportAndDisplay(MainFormUiComponents ui)
         {
             ui.TxtConsole.Text = "Đang yêu cầu xuất dữ liệu DEV/TEST...";
@@ -176,15 +319,7 @@ namespace DataMaskingSystem
                     {
                         ui.TxtConsole.Text = result.ConsoleMessage ?? "Xuất dữ liệu thành công.";
                         ui.DgvDev.DataSource = result.Rows;
-                        // Adjust column headers if needed
-                        if (ui.DgvDev.Columns.Count > 0)
-                        {
-                            ui.DgvDev.Columns["Id"].HeaderText = "ID";
-                            ui.DgvDev.Columns["MaKh"].HeaderText = "Mã KH";
-                            ui.DgvDev.Columns["MaskedName"].HeaderText = "Tên (Masked)";
-                            ui.DgvDev.Columns["MaskedEmail"].HeaderText = "Email (Masked)";
-                            ui.DgvDev.Columns["CipherCccd"].HeaderText = "CCCD (AES Encrypted)";
-                        }
+                        ConfigureDevGridColumns(ui.DgvDev);
                     }
                 }
                 else
@@ -210,6 +345,180 @@ namespace DataMaskingSystem
             }
         }
 
+        public static void SaveDevGridToCsv(MainFormUiComponents ui)
+        {
+            if (ui.DgvDev.Rows.Count == 0 || ui.DgvDev.Columns.Count == 0)
+            {
+                MessageBox.Show("Không có dữ liệu để lưu. Vui lòng tải dữ liệu trước.", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dialog = new SaveFileDialog
+            {
+                Title = "Lưu dữ liệu CSV",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                DefaultExt = "csv",
+                AddExtension = true,
+                FileName = $"customers_export_{DateTime.Now:yyyyMMdd_HHmmss}.csv"
+            };
+
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                var sb = new StringBuilder();
+
+                var visibleColumns = new List<DataGridViewColumn>();
+                foreach (DataGridViewColumn column in ui.DgvDev.Columns)
+                {
+                    if (column.Visible)
+                    {
+                        visibleColumns.Add(column);
+                    }
+                }
+
+                for (int i = 0; i < visibleColumns.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(EscapeCsv(visibleColumns[i].HeaderText));
+                }
+                sb.AppendLine();
+
+                foreach (DataGridViewRow row in ui.DgvDev.Rows)
+                {
+                    if (row.IsNewRow)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < visibleColumns.Count; i++)
+                    {
+                        if (i > 0) sb.Append(',');
+                        object? value = row.Cells[visibleColumns[i].Index].Value;
+                        sb.Append(EscapeCsv(value?.ToString() ?? string.Empty));
+                    }
+                    sb.AppendLine();
+                }
+
+                File.WriteAllText(dialog.FileName, sb.ToString(), Encoding.UTF8);
+                MessageBox.Show("Đã lưu file CSV thành công.", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lưu file CSV thất bại: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private static string EscapeCsv(string input)
+        {
+            if (input.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0)
+            {
+                return "\"" + input.Replace("\"", "\"\"") + "\"";
+            }
+
+            return input;
+        }
+
+        private static void ConfigureDevGridColumns(DataGridView grid)
+        {
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            grid.ScrollBars = ScrollBars.Both;
+
+            foreach (DataGridViewColumn column in grid.Columns)
+            {
+                column.MinimumWidth = 120;
+                column.Width = 170;
+            }
+
+            if (grid.Columns.Contains("CustomerID"))
+            {
+                grid.Columns["CustomerID"].Width = 90;
+                grid.Columns["CustomerID"].Frozen = true;
+            }
+
+            if (grid.Columns.Contains("MaKhachHang"))
+            {
+                grid.Columns["MaKhachHang"].Width = 110;
+            }
+
+            if (grid.Columns.Contains("HoTenMasked"))
+            {
+                grid.Columns["HoTenMasked"].Width = 160;
+            }
+
+            if (grid.Columns.Contains("NgaySinh"))
+            {
+                grid.Columns["NgaySinh"].Width = 110;
+            }
+
+            if (grid.Columns.Contains("GioiTinh"))
+            {
+                grid.Columns["GioiTinh"].Width = 80;
+            }
+        }
+
+        public static async Task LoadAndDisplayMyProfile(MainFormUiComponents ui)
+        {
+            ui.TxtConsole.Text = "Đang tải hồ sơ cá nhân...";
+            ui.BtnSearch.Enabled = false;
+            ui.TxtSearchID.Enabled = false;
+            ui.CboSearchType.Enabled = false;
+
+            try
+            {
+                ApplyAuthHeader();
+                string apiUrl = $"{ApiBaseUrl}/api/customer/me/profile";
+                HttpResponseMessage response = await _httpClient.GetAsync(apiUrl);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ResetCskhUi(ui);
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        ui.TxtConsole.Text = "Token không hợp lệ hoặc đã hết hạn.";
+                        MessageBox.Show("Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.", "Xác thực thất bại", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    ui.TxtConsole.Text = $"Lỗi API: {response.StatusCode}\n{errorContent}";
+                    MessageBox.Show("Không thể tải hồ sơ cá nhân từ máy chủ.", "Lỗi kết nối", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                string jsonString = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<CustomerSelfProfileResponse>(jsonString);
+                if (result == null || !result.Found)
+                {
+                    ResetCskhUi(ui);
+                    ui.TxtConsole.Text = result?.Message ?? "Không tìm thấy hồ sơ cá nhân.";
+                    MessageBox.Show(result?.Message ?? "Không tìm thấy hồ sơ cá nhân.", "Không tìm thấy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                UpdateCustomerSelfUi(ui, result);
+                ui.TxtConsole.Text = "Đã tải hồ sơ cá nhân thành công qua kết nối xác thực JWT.";
+            }
+            catch (Exception ex)
+            {
+                ResetCskhUi(ui);
+                ui.TxtConsole.Text = $"Lỗi tải hồ sơ: {ex.Message}";
+                MessageBox.Show($"Không thể tải hồ sơ cá nhân.\nChi tiết: {ex.Message}", "Lỗi kết nối", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        public static void ConfigureCustomerSelfLayout(MainFormUiComponents ui)
+        {
+            ui.PnlSearchArea.Visible = false;
+            ui.BtnCskhUpdateRequest.Visible = false;
+            ui.LblDetailsTitle.Location = new Point(ui.LblDetailsTitle.Location.X, 148);
+            ui.DgvCustomerDetails.Location = new Point(ui.DgvCustomerDetails.Location.X, 172);
+            ui.DgvCustomerDetails.Height = 362;
+        }
+
         private static void UpdateCskhUI(MainFormUiComponents ui, CskhSearchResponse data)
         {
             // Update simple labels
@@ -228,6 +537,17 @@ namespace DataMaskingSystem
             ui.LblProfilePhone.Text = data.DbFields.GetValueOrDefault("SĐT (Mask)", "---");
             ui.LblProfileEmail.Text = data.DbFields.GetValueOrDefault("Email (Mask)", "---");
 
+            if (data.DbFields.TryGetValue("ID Hệ Thống", out string? customerIdText)
+                && long.TryParse(customerIdText, out long customerId)
+                && customerId > 0)
+            {
+                ui.PnlSearchArea.Tag = customerId;
+            }
+            else
+            {
+                ui.PnlSearchArea.Tag = null;
+            }
+
             // Update details grid
             ui.DgvCustomerDetails.DataSource = null;
             ui.DgvCustomerDetails.Rows.Clear();
@@ -236,15 +556,7 @@ namespace DataMaskingSystem
             ui.DgvCustomerDetails.Columns.Add("LeftDetail", "Chi tiết");
             ui.DgvCustomerDetails.Columns.Add("RightCategory", "Hạng Mục (Tiếp)");
             ui.DgvCustomerDetails.Columns.Add("RightDetail", "Chi tiết (Tiếp)");
-
-            ui.DgvCustomerDetails.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
-            int categoryWidth = 200;
-            int detailWidth = 220;
-
-            ui.DgvCustomerDetails.Columns["LeftCategory"].Width = categoryWidth;
-            ui.DgvCustomerDetails.Columns["LeftDetail"].Width = detailWidth;
-            ui.DgvCustomerDetails.Columns["RightCategory"].Width = categoryWidth;
-            ui.DgvCustomerDetails.Columns["RightDetail"].Width = detailWidth;
+            ConfigureDetailsGridColumns(ui.DgvCustomerDetails);
 
             var displayFields = BuildDisplayFields(data.DbFields);
             for (int i = 0; i < displayFields.Count; i += 2)
@@ -263,6 +575,71 @@ namespace DataMaskingSystem
             SetPortraitImage(ui.PicPortrait, data.PortraitImage);
         }
 
+        private static void UpdateCustomerSelfUi(MainFormUiComponents ui, CustomerSelfProfileResponse data)
+        {
+            string genderText = data.GioiTinh == 0 ? "Nam" : "Nữ";
+            ui.LblMaskedCard.Text = string.IsNullOrWhiteSpace(data.SoThe) ? "---" : data.SoThe;
+            ui.LblBalance.Text = string.Format("{0:N0} VNĐ", data.SoDu);
+
+            ui.LblProfileName.Text = string.IsNullOrWhiteSpace(data.HoTen) ? "---" : data.HoTen;
+            ui.LblProfileDob.Text = string.IsNullOrWhiteSpace(data.NgaySinh) ? "---" : data.NgaySinh;
+            ui.LblProfileGender.Text = genderText;
+            ui.LblProfileCccd.Text = string.IsNullOrWhiteSpace(data.SoCCCD) ? "---" : data.SoCCCD;
+            ui.LblProfilePhone.Text = string.IsNullOrWhiteSpace(data.SoDienThoai) ? "---" : data.SoDienThoai;
+            ui.LblProfileEmail.Text = string.IsNullOrWhiteSpace(data.Email) ? "---" : data.Email;
+
+            ui.DgvCustomerDetails.DataSource = null;
+            ui.DgvCustomerDetails.Rows.Clear();
+            ui.DgvCustomerDetails.Columns.Clear();
+            ui.DgvCustomerDetails.Columns.Add("LeftCategory", "Hạng Mục");
+            ui.DgvCustomerDetails.Columns.Add("LeftDetail", "Chi tiết");
+            ui.DgvCustomerDetails.Columns.Add("RightCategory", "Hạng Mục (Tiếp)");
+            ui.DgvCustomerDetails.Columns.Add("RightDetail", "Chi tiết (Tiếp)");
+            ConfigureDetailsGridColumns(ui.DgvCustomerDetails);
+
+            var details = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("ID Hệ Thống", data.CustomerId.ToString()),
+                new KeyValuePair<string, string>("Mã KH", data.MaKhachHang),
+                new KeyValuePair<string, string>("Quốc tịch", data.QuocTich),
+                new KeyValuePair<string, string>("Địa chỉ", data.DiaChiNha),
+                new KeyValuePair<string, string>("Số tài khoản", data.SoTaiKhoan),
+                new KeyValuePair<string, string>("Số thẻ", data.SoThe),
+                new KeyValuePair<string, string>("Dư nợ hiện tại", string.Format("{0:N0} VNĐ", data.DuNoHienTai)),
+                new KeyValuePair<string, string>("Loại tài khoản", data.LoaiTaiKhoan.ToString()),
+                new KeyValuePair<string, string>("Trạng thái thẻ", data.TrangThaiThe.ToString()),
+                new KeyValuePair<string, string>("Tên đăng nhập", data.TenDangNhap)
+            };
+
+            for (int i = 0; i < details.Count; i += 2)
+            {
+                var left = details[i];
+                var right = i + 1 < details.Count
+                    ? details[i + 1]
+                    : new KeyValuePair<string, string>(string.Empty, string.Empty);
+
+                ui.DgvCustomerDetails.Rows.Add(left.Key, left.Value, right.Key, right.Value);
+            }
+
+            SetPortraitImage(ui.PicPortrait, data.PortraitImage);
+        }
+
+        private static void ConfigureDetailsGridColumns(DataGridView grid)
+        {
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+
+            const int categoryWidth = 132;
+            const int detailWidth = 170;
+
+            grid.Columns["LeftCategory"].Width = categoryWidth;
+            grid.Columns["LeftDetail"].Width = detailWidth;
+            grid.Columns["RightCategory"].Width = categoryWidth;
+            grid.Columns["RightDetail"].Width = detailWidth;
+
+            grid.Columns["LeftDetail"].DefaultCellStyle.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+            grid.Columns["RightDetail"].DefaultCellStyle.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+        }
+
         private static void ResetCskhUi(MainFormUiComponents ui)
         {
             ui.LblMaskedCard.Text = "**** **** **** ****";
@@ -276,6 +653,7 @@ namespace DataMaskingSystem
             ui.DgvCustomerDetails.DataSource = null;
             ui.DgvCustomerDetails.Rows.Clear();
             ui.DgvCustomerDetails.Columns.Clear();
+            ui.PnlSearchArea.Tag = null;
             ClearPortraitImage(ui.PicPortrait);
             ui.PicPortrait.Image = null;
         }
@@ -327,13 +705,20 @@ namespace DataMaskingSystem
         private static void ApplyAuthHeader()
         {
             string token = AuthSession.AccessToken;
+            string clientId = AuthSession.ClientId;
             if (string.IsNullOrWhiteSpace(token))
             {
                 _httpClient.DefaultRequestHeaders.Authorization = null;
+                _httpClient.DefaultRequestHeaders.Remove("X-Client-Id");
                 return;
             }
 
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            _httpClient.DefaultRequestHeaders.Remove("X-Client-Id");
+            if (!string.IsNullOrWhiteSpace(clientId))
+            {
+                _httpClient.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+            }
         }
 
         private static void SetPortraitImage(PictureBox portraitBox, string? portraitRelativePath)
@@ -555,8 +940,10 @@ namespace DataMaskingSystem
             }
         }
 
-        public static MainFormUiComponents Build(Form host, Func<Task> onSearchClick, Func<Task> onExportClick, EventHandler onLogoutClick)
+        public static MainFormUiComponents Build(Form host, Func<Task> onSearchClick, Func<Task> onExportClick, EventHandler onSaveCsvClick, EventHandler onLogoutClick)
         {
+            MainFormUiComponents? uiRef = null;
+
             host.Text = "The Financial Atelier | Masking Console";
             host.Size = new Size(1360, 860);
             host.MinimumSize = new Size(1220, 760);
@@ -709,7 +1096,7 @@ namespace DataMaskingSystem
             metricCard.Paint += DrawCardBorder;
             metricCard.Controls.Add(new Label
             {
-                Text = "Số thẻ (PCI-DSS Masked)",
+                Text = "Số thẻ",
                 Font = new Font("Bahnschrift", 10, FontStyle.Regular),
                 ForeColor = Color.FromArgb(174, 214, 255),
                 Location = new Point(16, 14),
@@ -746,19 +1133,26 @@ namespace DataMaskingSystem
             statusCard.Controls.Add(lblBalance);
             contentCard.Controls.Add(statusCard);
 
+            Panel searchArea = new Panel
+            {
+                Location = new Point(22, 148),
+                Size = new Size(570, 62),
+                BackColor = Color.Transparent
+            };
+
             Label searchLabel = new Label
             {
                 Text = "Chọn tiêu chí & Nhập thông tin tìm kiếm",
                 Font = new Font("Bahnschrift", 10, FontStyle.Regular),
                 ForeColor = Color.FromArgb(95, 108, 137),
-                Location = new Point(22, 148),
+                Location = new Point(0, 0),
                 AutoSize = true
             };
-            contentCard.Controls.Add(searchLabel);
+            searchArea.Controls.Add(searchLabel);
 
             ComboBox cboSearchType = new ComboBox
             {
-                Location = new Point(22, 172),
+                Location = new Point(0, 24),
                 Width = 160,
                 Font = new Font("Bahnschrift", 11, FontStyle.Regular),
                 DropDownStyle = ComboBoxStyle.DropDownList,
@@ -767,23 +1161,23 @@ namespace DataMaskingSystem
             };
             cboSearchType.Items.AddRange(new string[] { "Số điện thoại", "Số CMND/CCCD", "Số TK / Số thẻ" });
             cboSearchType.SelectedIndex = 0;
-            contentCard.Controls.Add(cboSearchType);
+            searchArea.Controls.Add(cboSearchType);
 
             TextBox txtSearchID = new TextBox
             {
-                Location = new Point(190, 172),
+                Location = new Point(168, 24),
                 Width = 240,
                 Height = 34,
                 Font = new Font("Bahnschrift", 11, FontStyle.Regular),
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = Color.FromArgb(250, 251, 254)
             };
-            contentCard.Controls.Add(txtSearchID);
+            searchArea.Controls.Add(txtSearchID);
 
             Button btnSearch = new Button
             {
                 Text = "Tìm kiếm",
-                Location = new Point(440, 170),
+                Location = new Point(416, 22),
                 Width = 150,
                 Height = 34,
                 BackColor = Color.FromArgb(20, 123, 197),
@@ -793,7 +1187,30 @@ namespace DataMaskingSystem
             };
             btnSearch.FlatAppearance.BorderSize = 0;
             btnSearch.Click += async (s, e) => await onSearchClick();
-            contentCard.Controls.Add(btnSearch);
+            searchArea.Controls.Add(btnSearch);
+
+            Button btnCskhUpdateRequest = new Button
+            {
+                Text = "Cập nhật thông tin",
+                Location = new Point(606, 168),
+                Width = 150,
+                Height = 34,
+                BackColor = Color.FromArgb(232, 101, 38),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Bahnschrift SemiBold", 10, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            btnCskhUpdateRequest.FlatAppearance.BorderSize = 0;
+            btnCskhUpdateRequest.Click += async (s, e) =>
+            {
+                if (uiRef != null)
+                {
+                    await SubmitCskhUpdateRequest(uiRef);
+                }
+            };
+            contentCard.Controls.Add(btnCskhUpdateRequest);
+            contentCard.Controls.Add(searchArea);
 
             Label lblPropertyTitle = new Label
             {
@@ -852,6 +1269,7 @@ namespace DataMaskingSystem
                 Cursor = Cursors.Hand
             };
             btnSaveFile.FlatAppearance.BorderSize = 0;
+            btnSaveFile.Click += onSaveCsvClick;
             devHeaderCard.Controls.Add(btnSaveFile);
 
             int cardW = (canvasWidth - 32) / 3;
@@ -874,7 +1292,7 @@ namespace DataMaskingSystem
 
             DataGridView dgvDev = BuildGrid(new Rectangle(20, 52, canvasWidth - 40, 278));
             dgvDev.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            dgvDev.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+            dgvDev.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             dgvDev.ScrollBars = ScrollBars.Both;
             devTableCard.Controls.Add(dgvDev);
 
@@ -926,10 +1344,11 @@ namespace DataMaskingSystem
 
             host.Controls.Add(content);
 
-            return new MainFormUiComponents
+            uiRef = new MainFormUiComponents
             {
                 PnlCSKH = pnlCSKH,
                 PnlDEV = pnlDEV,
+                PnlSearchArea = searchArea,
                 TxtSearchID = txtSearchID,
                 BtnSearch = btnSearch,
                 BtnExport = btnExport,
@@ -939,6 +1358,7 @@ namespace DataMaskingSystem
                 TxtConsole = txtConsole,
                 DgvDev = dgvDev,
                 DgvCustomerDetails = dgvCustomerDetails,
+                LblDetailsTitle = lblPropertyTitle,
                 PicPortrait = picPortrait,
                 LblMaskedCard = lblMaskedCard,
                 LblBalance = lblBalance,
@@ -949,8 +1369,155 @@ namespace DataMaskingSystem
                 LblProfileCccd = lblCccd,
                 LblProfilePhone = lblPhone,
                 LblProfileEmail = lblEmail,
+                BtnCskhUpdateRequest = btnCskhUpdateRequest,
             };
+
+            return uiRef;
         }
+
+        private sealed class CskhUpdateRequestDialog : Form
+        {
+            private readonly TextBox _txtReason;
+            private readonly TextBox _txtHoTen;
+            private readonly TextBox _txtNgaySinh;
+            private readonly ComboBox _cboGioiTinh;
+            private readonly TextBox _txtQuocTich;
+            private readonly TextBox _txtDiaChi;
+            private readonly TextBox _txtPhone;
+            private readonly TextBox _txtEmail;
+            private readonly TextBox _txtCccd;
+
+            public string RequestReason => _txtReason.Text.Trim();
+            public string HoTen => _txtHoTen.Text.Trim();
+            public string NgaySinh => _txtNgaySinh.Text.Trim();
+            public int? GioiTinh => _cboGioiTinh.SelectedIndex switch { 1 => 0, 2 => 1, _ => null };
+            public string QuocTich => _txtQuocTich.Text.Trim();
+            public string DiaChiNha => _txtDiaChi.Text.Trim();
+            public string SoDienThoai => _txtPhone.Text.Trim();
+            public string Email => _txtEmail.Text.Trim();
+            public string SoCCCD => _txtCccd.Text.Trim();
+
+            public CskhUpdateRequestDialog()
+            {
+                Text = "CSKH - Cập nhật thông tin khách hàng";
+                StartPosition = FormStartPosition.CenterParent;
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+                MaximizeBox = false;
+                MinimizeBox = false;
+                Width = 620;
+                Height = 560;
+
+                var layout = new TableLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    ColumnCount = 2,
+                    RowCount = 11,
+                    Padding = new Padding(14)
+                };
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+                for (int i = 0; i < 10; i++)
+                {
+                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+                }
+                layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+                _txtReason = NewTextBox();
+                _txtHoTen = NewTextBox();
+                _txtNgaySinh = NewTextBox("yyyy-MM-dd");
+                _cboGioiTinh = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 360 };
+                _cboGioiTinh.Items.AddRange(new[] { "(Không đổi)", "Nam", "Nữ" });
+                _cboGioiTinh.SelectedIndex = 0;
+                _txtQuocTich = NewTextBox();
+                _txtDiaChi = NewTextBox();
+                _txtPhone = NewTextBox();
+                _txtEmail = NewTextBox();
+                _txtCccd = NewTextBox();
+
+                AddRow(layout, 0, "Ghi chú", _txtReason);
+                AddRow(layout, 1, "Họ tên mới", _txtHoTen);
+                AddRow(layout, 2, "Ngày sinh mới", _txtNgaySinh);
+                AddRow(layout, 3, "Giới tính mới", _cboGioiTinh);
+                AddRow(layout, 4, "Quốc tịch mới", _txtQuocTich);
+                AddRow(layout, 5, "Địa chỉ mới", _txtDiaChi);
+                AddRow(layout, 6, "SĐT mới", _txtPhone);
+                AddRow(layout, 7, "Email mới", _txtEmail);
+                AddRow(layout, 8, "CCCD mới", _txtCccd);
+
+                var hint = new Label
+                {
+                    Text = "Điền các trường cần sửa, trường để trống sẽ được giữ nguyên.",
+                    AutoSize = true,
+                    ForeColor = Color.FromArgb(92, 106, 136)
+                };
+                layout.Controls.Add(hint, 1, 9);
+
+                var pnlButtons = new FlowLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    FlowDirection = FlowDirection.RightToLeft
+                };
+                var btnSend = new Button { Text = "Cập nhật", Width = 120, Height = 32 };
+                var btnCancel = new Button { Text = "Hủy", Width = 90, Height = 32 };
+                btnSend.Click += (s, e) =>
+                {
+                    bool hasUpdate = !string.IsNullOrWhiteSpace(HoTen)
+                        || !string.IsNullOrWhiteSpace(NgaySinh)
+                        || GioiTinh.HasValue
+                        || !string.IsNullOrWhiteSpace(QuocTich)
+                        || !string.IsNullOrWhiteSpace(DiaChiNha)
+                        || !string.IsNullOrWhiteSpace(SoDienThoai)
+                        || !string.IsNullOrWhiteSpace(Email)
+                        || !string.IsNullOrWhiteSpace(SoCCCD);
+
+                    if (!hasUpdate)
+                    {
+                        MessageBox.Show("Bạn chưa nhập trường nào cần chỉnh sửa.", "Thiếu dữ liệu", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    DialogResult = DialogResult.OK;
+                    Close();
+                };
+                btnCancel.Click += (s, e) =>
+                {
+                    DialogResult = DialogResult.Cancel;
+                    Close();
+                };
+
+                pnlButtons.Controls.Add(btnSend);
+                pnlButtons.Controls.Add(btnCancel);
+                layout.Controls.Add(pnlButtons, 1, 10);
+
+                Controls.Add(layout);
+            }
+
+            private static TextBox NewTextBox(string placeholder = "")
+            {
+                var textBox = new TextBox { Width = 360 };
+                if (!string.IsNullOrWhiteSpace(placeholder))
+                {
+                    textBox.PlaceholderText = placeholder;
+                }
+                return textBox;
+            }
+
+            private static void AddRow(TableLayoutPanel layout, int row, string labelText, Control editor)
+            {
+                var label = new Label
+                {
+                    Text = labelText,
+                    AutoSize = true,
+                    Anchor = AnchorStyles.Left,
+                    ForeColor = Color.FromArgb(58, 72, 101)
+                };
+
+                layout.Controls.Add(label, 0, row);
+                editor.Anchor = AnchorStyles.Left;
+                layout.Controls.Add(editor, 1, row);
+            }
+        }
+
 
         private static Panel CreateCardPanel(Rectangle bounds, Color backColor)
         {
